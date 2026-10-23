@@ -1,20 +1,19 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js&quot;;
-import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js&quot;;
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js&quot;;
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm&#39;;
 
-const firebaseConfig = {
-    apiKey: "minha API",
-    authDomain: "meu domínio",
-    databaseURL: "meu URL",
-    projectId: "meu ID"
-};
+/* =========================================================
+   INICIALIZAÇÃO DO SUPABASE CLIENT
+   ========================================================= */
+const SUPABASE_URL = 'https://jrdzgddszylausmwgrxw.supabase.co&#39;;
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyZHpnZGRzenlsYXVzbXdncnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NzAwNDgsImV4cCI6MjEwNzE0NjA0OH0.6a9pbuSuabu9yP5zdtlemeIQYTXIB4ArauayEi5N-BY'; // Insira a sua chave anon public
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const auth = getAuth(app);
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let tempoInicial;
+let tempoInicial = Date.now();
+let inicioEmergencia = 0;
 
+/* =========================================================
+   CRONÔMETRO
+   ========================================================= */
 function iniciarCronometro() {
     tempoInicial = Date.now();
     setInterval(() => {
@@ -28,97 +27,131 @@ function iniciarCronometro() {
     }, 1000);
 }
 
-onAuthStateChanged(auth, (user) => {
-    if (user) {
-        console.log("🔒 Autenticação confirmada na Emergência. UID:", user.uid);
+/* =========================================================
+   VERIFICAÇÃO DE SESSÃO LOCAL E ESCUTA SUPABASE
+   ========================================================= */
+if (sessionStorage.getItem('logado') !== 'true') {
+    console.warn("⚠️ Acesso não autorizado na Emergência. Redirecionando...");
+    window.location.replace("index.html");
+} else {
+    iniciarCronometro();
+    inicializarEmergencia();
+}
 
-        // Ouve a configuração de início de emergência
-        const configRef = ref(db, 'configuracao/inicio_emergencia');
-        onValue(configRef, (configSnap) => {
-            const inicioEmergenciaStr = configSnap.val();
-           
-            // Se o timestamp não existir, usa 0 (qualquer bip posterior conta)
-            const inicioEmergencia = inicioEmergenciaStr ? new Date(inicioEmergenciaStr).getTime() : 0;
+async function inicializarEmergencia() {
+    // 1. Carrega o estado atual do sistema
+    const { data: configData } = await supabaseClient
+        .from('estado_sistema')
+        .select('*')
+        .eq('id', 1)
+        .single();
 
-            const alunosRef = ref(db, 'alunos');
-            onValue(alunosRef, (snapshot) => {
-                const dados = snapshot.val();
-                if (!dados) return;
-
-                let totalNaEscola = 0;
-                let totalSeguros = 0;
-                const listaPendentes = document.getElementById('lista-nomes-pendentes');
-                if (listaPendentes) listaPendentes.innerHTML = '';
-
-                for (let id in dados) {
-                    const aluno = dados[id];
-
-                    // Processa alunos com status "presente"
-                    if (aluno.status === "presente") {
-                        totalNaEscola++;
-
-                        // Resgata o horário da última leitura ou atualização
-                        const dataLeitura = aluno.ultima_leitura || aluno.ultima_atualizacao;
-                        const ultimaLeitura = dataLeitura ? new Date(dataLeitura).getTime() : 0;
-                        const local = (aluno.local_atual || "").toUpperCase();
-
-                        // O aluno é considerado Seguro se:
-                        // 1. Está no local QUADRA ou ÁREA SEGURA (normalizado)
-                        // 2. A bipagem foi registrada após acionar a emergência (com margem de 5s)
-                        const bipouNaEmergencia = (ultimaLeitura + 5000) >= inicioEmergencia;
-                        const estaNaQuadra = (
-                            local.includes("QUADRA") ||
-                            local.includes("SEGURA") ||
-                            local.includes("AREA SEGURA") ||
-                            local.includes("ÁREA SEGURA")
-                        ) && bipouNaEmergencia;
-
-                        if (estaNaQuadra) {
-                            totalSeguros++;
-                        } else {
-                            if (listaPendentes) {
-                                const li = document.createElement('li');
-                                const identificacaoTurma = aluno.turma ? ` (${aluno.turma})` : '';
-                                li.innerText = `${aluno.nome}${identificacaoTurma}`;
-                                listaPendentes.appendChild(li);
-                            }
-                        }
-                    }
-                }
-
-                const totalPendentes = Math.max(0, totalNaEscola - totalSeguros);
-               
-                const elPresentes = document.getElementById('total-presentes');
-                const elSeguros = document.getElementById('total-seguros');
-                const elPendentes = document.getElementById('total-pendentes');
-
-                if (elPresentes) elPresentes.innerText = totalNaEscola;
-                if (elSeguros) elSeguros.innerText = totalSeguros;
-                if (elPendentes) elPendentes.innerText = totalPendentes;
-
-                // Liberação do botão de relatório final
-                const btnRelatorio = document.getElementById('btn-stop');
-                if (btnRelatorio) {
-                    if (totalPendentes === 0 && totalNaEscola > 0) {
-                        btnRelatorio.disabled = false;
-                        btnRelatorio.style.opacity = "1";
-                        btnRelatorio.style.cursor = "pointer";
-                        btnRelatorio.onclick = () => window.gerarRelatorioAbandono();
-                    } else {
-                        btnRelatorio.disabled = true;
-                        btnRelatorio.style.opacity = "0.5";
-                        btnRelatorio.style.cursor = "not-allowed";
-                    }
-                }
-            });
-        });
-
-    } else {
-        console.warn("⚠️ Acesso não autorizado na Emergência. Redirecionando...");
-        window.location.replace("index.html");
+    if (configData && configData.updated_at) {
+        inicioEmergencia = new Date(configData.updated_at).getTime();
     }
-});
 
+    // 2. Processa a lista inicial de alunos
+    await processarEvacuacao();
+
+    // 3. Escuta em tempo real as tabelas 'alunos', 'chamada_abandono' e 'estado_sistema'
+    supabaseClient
+        .channel('realtime-emergencia-js')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'alunos' }, async () => {
+            await processarEvacuacao();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'chamada_abandono' }, async () => {
+            await processarEvacuacao();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'estado_sistema' }, (payload) => {
+            if (payload.new && payload.new.modo === "NORMAL") {
+                window.location.replace("telao.html");
+            }
+        })
+        .subscribe();
+}
+
+/* =========================================================
+   CÁLCULO E PROCESSAMENTO DE ALUNOS NA ÁREA SEGURA
+   ========================================================= */
+async function processarEvacuacao() {
+    // Busca alunos presentes
+    const { data: alunos, error: errAlunos } = await supabaseClient
+        .from('alunos')
+        .select('*')
+        .eq('status', 'presente');
+
+    // Busca registros da chamada do abandono
+    const { data: seguros, error: errSeguros } = await supabaseClient
+        .from('chamada_abandono')
+        .select('aluno_tag');
+
+    if (errAlunos || !alunos) return;
+
+    const tagsSeguras = new Set(seguros ? seguros.map(s => s.aluno_tag) : []);
+
+    let totalNaEscola = 0;
+    let totalSeguros = 0;
+    const listaPendentes = document.getElementById('lista-nomes-pendentes');
+    if (listaPendentes) listaPendentes.innerHTML = '';
+
+    alunos.forEach(aluno => {
+        totalNaEscola++;
+
+        const dataLeitura = aluno.ultimo_registro || aluno.ultima_atualizacao;
+        const ultimaLeitura = dataLeitura ? new Date(dataLeitura).getTime() : 0;
+        const local = (aluno.local_atual || "").toUpperCase();
+
+        const bipouNaEmergencia = (ultimaLeitura + 5000) >= inicioEmergencia;
+        const estaNaQuadra = (
+            local.includes("QUADRA") ||
+            local.includes("SEGURA") ||
+            local.includes("AREA SEGURA") ||
+            local.includes("ÁREA SEGURA")
+        ) && bipouNaEmergencia;
+
+        const estaSeguro = estaNaQuadra || tagsSeguras.has(aluno.uid);
+
+        if (estaSeguro) {
+            totalSeguros++;
+        } else {
+            if (listaPendentes) {
+                const li = document.createElement('li');
+                const identificacaoTurma = aluno.turma ? ` (${aluno.turma})` : '';
+                li.innerHTML = `<strong>${aluno.nome}</strong>${identificacaoTurma}`;
+                listaPendentes.appendChild(li);
+            }
+        }
+    });
+
+    const totalPendentes = Math.max(0, totalNaEscola - totalSeguros);
+
+    const elPresentes = document.getElementById('total-presentes');
+    const elSeguros = document.getElementById('total-seguros');
+    const elPendentes = document.getElementById('total-pendentes');
+
+    if (elPresentes) elPresentes.innerText = totalNaEscola;
+    if (elSeguros) elSeguros.innerText = totalSeguros;
+    if (elPendentes) elPendentes.innerText = totalPendentes;
+
+    // Liberação do botão de relatório final
+    const btnRelatorio = document.getElementById('btn-stop');
+    if (btnRelatorio) {
+        if (totalPendentes === 0 && totalNaEscola > 0) {
+            btnRelatorio.disabled = false;
+            btnRelatorio.style.opacity = "1";
+            btnRelatorio.style.cursor = "pointer";
+            btnRelatorio.onclick = () => window.gerarRelatorioAbandono();
+        } else {
+            btnRelatorio.disabled = true;
+            btnRelatorio.style.opacity = "0.5";
+            btnRelatorio.style.cursor = "not-allowed";
+        }
+    }
+}
+
+/* =========================================================
+   EMISSÃO DE RELATÓRIO E ENCERRAMENTO
+   ========================================================= */
 window.gerarRelatorioAbandono = function() {
     const tempoEvacuacao = document.getElementById('cronometro')?.innerText || "00:00:00";
     const totalPresentes = document.getElementById('total-presentes')?.innerText || "0";
@@ -153,12 +186,19 @@ window.gerarRelatorioAbandono = function() {
 window.voltarNormalidade = async function() {
     if (confirm("Encerrar protocolo?")) {
         try {
-            await update(ref(db, 'configuracao'), { estado_sistema: "NORMAL" });
+            await supabaseClient
+                .from('estado_sistema')
+                .update({ modo: "NORMAL", updated_at: new Date().toISOString() })
+                .eq('id', 1);
+
+            await supabaseClient
+                .from('chamada_abandono')
+                .delete()
+                .neq('id', 0);
+
             window.location.replace("telao.html");
         } catch (e) {
-            alert("Erro ao conectar com o banco.");
+            alert("Erro ao conectar com o banco de dados.");
         }
     }
 };
-
-iniciarCronometro();
