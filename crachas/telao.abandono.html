@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>School Tracker - PLANO DE ABANDONO</title>
+    <link rel="stylesheet" href="style_emergencia.css">
+    <link rel="icon" href="favicon_avelino.ico" type="image/x-icon">
+   
+    <!-- CLIENTE SDK SUPABASE -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script&gt;
+
+    <style>
+    /* Cabeçalho de Impressão (escondido na tela) */
+    .print-header { display: none; }
+
+    @media print {
+        /* Esconde tudo o que não é relatório */
+        body { background: white !important; color: black !important; padding: 0; }
+        footer, .stats-container, #cronometro, h1, .alert-box { display: none !important; }
+       
+        /* Mostra o cabeçalho e estiliza o conteúdo */
+        .print-header {
+            display: block !important;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #000;
+            color: black;
+        }
+
+        .report-summary {
+            color: black !important;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            line-height: 1.8;
+        }
+
+        /* Rodapé com assinatura */
+        body::after {
+            content: "\A\A __________________________________________\A Assinatura do Responsável (Ciente)";
+            display: block;
+            text-align: center;
+            margin-top: 80px;
+            white-space: pre;
+            font-weight: bold;
+            color: black;
+        }
+    }
+    </style>
+</head>
+<body class="emergency-mode">
+
+    <!-- Estrutura do Relatório que será preenchida pelo JS -->
+    <div class="print-header">
+        <h1>SISTEMA DE MONITORAMENTO ESCOLAR</h1>
+        <h3>RELATÓRIO OFICIAL DE PROTOCOLO DE ABANDONO</h3>
+        <p>Emissão: <span id="data-relatorio"></span></p>
+    </div>
+    <div id="conteudo-impressao" class="report-summary"></div>
+
+    <header>
+        <h1>🚨 PROTOCOLO DE ABANDONO EM CURSO</h1>
+        <div id="cronometro">00:00:00</div>
+    </header>
+
+    <main class="dashboard">
+        <!-- Card 1: Total de Alunos no Prédio -->
+        <div class="card">
+            <h3>TOTAL NO TURNO</h3>
+            <p id="total-presentes">0</p>
+        </div>
+
+        <!-- Card 2: Alunos já Seguros na Quadra -->
+        <div class="card safe">
+            <h3>SEGUROS NA QUADRA</h3>
+            <p id="total-seguros">0</p>
+        </div>
+
+        <!-- Card 3: Alunos ainda no Prédio -->
+        <div class="card danger">
+            <h3>PENDENTES</h3>
+            <p id="total-pendentes">0</p>
+        </div>
+    </main>
+
+    <section class="lista-ausentes">
+        <h2>ESTUDANTES NÃO LOCALIZADOS:</h2>
+        <ul id="lista-nomes-pendentes">
+            <!-- Nomes aparecem aqui via JS -->
+        </ul>
+    </section>
+
+    <footer>
+        <button id="btn-stop" disabled>CONCLUIR E GERAR RELATÓRIO</button>
+        <button id="btn-voltar" onclick="voltarNormalidade()">VOLTAR À NORMALIDADE</button>
+    </footer>
+
+<script>
+    if (sessionStorage.getItem('logado') !== 'true') {
+        window.location.replace("index.html");
+    }
+
+    /* =========================================================
+       INICIALIZAÇÃO DO SUPABASE
+       ========================================================= */
+    const SUPABASE_URL = 'https://jrdzgddszylausmwgrxw.supabase.co&#39;;
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyZHpnZGRzenlsYXVzbXdncnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NzAwNDgsImV4cCI6MjEwNzE0NjA0OH0.6a9pbuSuabu9yP5zdtlemeIQYTXIB4ArauayEi5N-BY';
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false }
+    });
+
+    // Limpa canais órfãos ao carregar a página de abandono
+    if (supabaseClient) {
+        supabaseClient.removeAllChannels();
+    }
+
+    let tempoInicio = new Date();
+    let timerInterval = null;
+    let alunosBase = [];
+    let chamadasSeguras = new Set();
+    let canalAbandono = null; // Variável global declarada corretamente aqui!
+
+    /* =========================================================
+       CRONÔMETRO DE EMERGÊNCIA
+       ========================================================= */
+    function iniciarCronometro() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            const agora = new Date();
+            const diffMs = agora - tempoInicio;
+            const diffSeg = Math.floor(diffMs / 1000);
+           
+            const horas = String(Math.floor(diffSeg / 3600)).padStart(2, '0');
+            const minutos = String(Math.floor((diffSeg % 3600) / 60)).padStart(2, '0');
+            const segundos = String(diffSeg % 60).padStart(2, '0');
+           
+            document.getElementById('cronometro').innerText = `${horas}:${minutos}:${segundos}`;
+        }, 1000);
+    }
+
+    async function inicializarAbandono() {
+        iniciarCronometro();
+
+        // 1. Carrega os alunos
+        const { data: alunos, error: errAlunos } = await supabaseClient
+            .from('alunos')
+            .select('*');
+
+        if (!errAlunos && alunos) {
+            alunosBase = alunos.filter(a => {
+                const st = (a.status || '').toLowerCase();
+                return st === 'presente' || st === 'sala' || st === 'sala de aula';
+            });
+        }
+
+        await carregarChamadaAbandono();
+        processarAbandono();
+
+        // 2. Conecta o Realtime de forma segura
+        conectarRealtimeAbandono();
+
+        // 3. POLLING AGRESSIVO DE 1 SEGUNDO:
+        // Garante atualização instantânea na tela de abandono, ignorando o proxy.
+        setInterval(async () => {
+            await carregarChamadaAbandono();
+            processarAbandono();
+        }, 1000);
+    }
+
+    function conectarRealtimeAbandono() {
+        // Se já existir canal prévio, remove do cliente
+        if (canalAbandono) {
+            supabaseClient.removeChannel(canalAbandono);
+        }
+
+        // Criamos uma NOVA instância do canal para evitar o 'tried to join multiple times'
+        canalAbandono = supabaseClient.channel('realtime-abandono-' + Date.now());
+
+        canalAbandono
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'chamada_abandono' }, async () => {
+                console.log("🛡️ Alteração na chamada de abandono detectada!");
+                await carregarChamadaAbandono();
+                processarAbandono();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'estado_sistema' }, (payload) => {
+                if (payload.new && payload.new.modo === "NORMAL") {
+                    window.location.href = "telao.html";
+                }
+            })
+            .subscribe((status) => {
+                console.log("📡 Status do Canal Abandono:", status);
+               
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn("⚠️ Canal com erro. Destruindo e criando nova instância em 3s...");
+                    setTimeout(() => {
+                        conectarRealtimeAbandono(); // Reinstancia o canal do zero
+                    }, 3000);
+                }
+            });
+    }
+   
+    async function carregarChamadaAbandono() {
+        const { data: seguros, error } = await supabaseClient
+            .from('chamada_abandono')
+            .select('aluno_tag');
+
+        if (!error && seguros) {
+            chamadasSeguras = new Set(seguros.map(s => s.aluno_tag));
+        }
+    }
+
+    function processarAbandono() {
+        const total = alunosBase.length;
+       
+        const segurosNaQuadra = alunosBase.filter(a => chamadasSeguras.has(a.uid || a.id));
+        const totalSeguros = segurosNaQuadra.length;
+       
+        const pendentes = alunosBase.filter(a => !chamadasSeguras.has(a.uid || a.id));
+        const totalPendentes = pendentes.length;
+
+        document.getElementById('total-presentes').innerText = total;
+        document.getElementById('total-seguros').innerText = totalSeguros;
+        document.getElementById('total-pendentes').innerText = totalPendentes;
+
+        const listaUl = document.getElementById('lista-nomes-pendentes');
+        listaUl.innerHTML = '';
+
+        if (totalPendentes === 0) {
+            document.getElementById('btn-stop').disabled = false;
+        } else {
+            document.getElementById('btn-stop').disabled = true;
+        }
+
+        pendentes.forEach(aluno => {
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>${aluno.nome}</strong> (${aluno.turma || 'Sem Turma'})`;
+            listaUl.appendChild(li);
+        });
+    }
+
+    /* =========================================================
+       RETORNAR À NORMALIDADE
+       ========================================================= */
+    window.voltarNormalidade = async function() {
+        if (confirm("Deseja encerrar o Protocolo de Abandono e retornar à normalidade?")) {
+            try {
+                await supabaseClient
+                    .from('estado_sistema')
+                    .update({ modo: "NORMAL" })
+                    .eq('id', 1);
+
+                const idsParticipantes = alunosBase.map(a => a.uid || a.id).filter(Boolean);
+
+                if (idsParticipantes.length > 0) {
+                    await supabaseClient
+                        .from('alunos')
+                        .update({ status: 'presente', local_atual: 'SALA DE AULA' })
+                        .in('uid', idsParticipantes);
+                }
+
+                await supabaseClient
+                    .from('chamada_abandono')
+                    .delete()
+                    .neq('id', 0);
+
+                console.log("✅ Sistema retornado à normalidade.");
+                window.location.href = "telao.html";
+            } catch (err) {
+                alert("Erro ao retornar à normalidade: " + err.message);
+            }
+        }
+    };
+
+    /* =========================================================
+       GERAÇÃO E IMPRESSÃO DO RELATÓRIO
+       ========================================================= */
+    document.getElementById('btn-stop').onclick = () => {
+        const agora = new Date();
+        document.getElementById('data-relatorio').innerText = agora.toLocaleString('pt-BR');
+
+        const relatorio = `
+            <p><strong>Duração Total do Exercício:</strong> ${document.getElementById('cronometro').innerText}</p>
+            <p><strong>Total de Alunos Esperados:</strong> ${alunosBase.length}</p>
+            <p><strong>Alunos Evacuados com Sucesso (Seguros):</strong> ${chamadasSeguras.size}</p>
+            <p><strong>Alunos Não Localizados:</strong> ${alunosBase.length - chamadasSeguras.size}</p>
+            <p><strong>Status do Exercício:</strong> CONCLUÍDO</p>
+        `;
+
+        document.getElementById('conteudo-impressao').innerHTML = relatorio;
+        window.print();
+    };
+
+    // Inicialização
+    inicializarAbandono();
+</script>
+</body>
+</html>
