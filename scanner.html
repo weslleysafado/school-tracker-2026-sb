@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Tracker - Scanner Oficial</title>
+
+    <style>
+        /* =========================================================
+           VISUAL NORMAL
+           ========================================================= */
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            background: #0f172a;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 20px;
+            transition: background 0.5s ease, color 0.5s ease;
+        }
+
+        .header-scanner {
+            text-align: center;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .header-scanner h2 {
+            transition: all 0.3s ease;
+        }
+
+        .controls {
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 15px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        select {
+            padding: 14px;
+            border-radius: 10px;
+            border: 2px solid #334155;
+            background: #0f172a;
+            color: white;
+            font-size: 1rem;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        select:disabled {
+            background-color: #334155 !important;
+            color: #f8fafc !important;
+            opacity: 0.9 !important;
+            cursor: not-allowed !important;
+        }
+
+        #reader {
+            width: 100% !important;
+            max-width: 400px;
+            border-radius: 15px;
+            overflow: hidden;
+            background: #1e293b;
+            border: none !important;
+            position: relative;
+            transition: border 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        #reader video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        }
+
+        #reader__scan_region {
+            background: transparent !important;
+        }
+
+        #reader__scan_region img {
+            display: none !important;
+        }
+
+        #resultado {
+            margin-top: 15px;
+            padding: 18px;
+            border-radius: 12px;
+            font-weight: bold;
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+            transition: all 0.3s ease;
+        }
+
+        .success {
+            background: #059669;
+            border-left: 8px solid #047857;
+        }
+
+        .error {
+            background: #dc2626;
+            border-left: 8px solid #b91c1c;
+        }
+
+        .scanning {
+            background: #334155;
+            border-left: 8px solid #475569;
+        }
+
+        /* =========================================================
+           MODO PLANO DE ABANDONO
+           ========================================================= */
+
+        body.modo-emergencia {
+            background: radial-gradient(circle at top, #7f1d1d 0%, #450a0a 45%, #1a0505 100%) !important;
+            color: #fff !important;
+        }
+
+        /* Cabeçalho */
+        body.modo-emergencia .header-scanner {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        body.modo-emergencia .header-scanner::before {
+            content: "🚨 PLANO DE ABANDONO ATIVO 🚨";
+            display: block;
+            background: #dc2626;
+            color: #fff;
+            padding: 12px 10px;
+            border-radius: 10px;
+            font-weight: 900;
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.7);
+            animation: alertaEmergencia 1.5s infinite;
+        }
+
+        body.modo-emergencia .header-scanner h2 {
+            color: #fecaca;
+            text-transform: uppercase;
+            font-size: 1.5rem;
+            margin-top: 5px;
+            animation: alertaEmergencia 1.5s infinite;
+        }
+
+        /* Caixa dos seletores */
+        body.modo-emergencia .controls {
+            border: 3px solid #ef4444 !important;
+            background: #1c0909 !important;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.5), 0 0 35px rgba(239, 68, 68, 0.2) !important;
+        }
+
+        body.modo-emergencia .controls::before {
+            content: "🛡️ ESTE DISPOSITIVO ESTÁ OPERANDO EM MODO DE EVACUAÇÃO";
+            display: block;
+            background: #7f1d1d;
+            color: #fecaca;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.78rem;
+            font-weight: bold;
+            line-height: 1.3;
+        }
+
+        body.modo-emergencia .controls label {
+            color: #fca5a5;
+        }
+
+        /* Selects travados */
+        body.modo-emergencia select,
+        body.modo-emergencia select:disabled {
+            background: #450a0a !important;
+            color: #fff !important;
+            border: 2px solid #ef4444 !important;
+            opacity: 1 !important;
+            cursor: not-allowed !important;
+            font-weight: bold;
+        }
+
+        /* Scanner */
+        body.modo-emergencia #reader {
+            border: 4px solid #ef4444 !important;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.7), 0 0 45px rgba(239, 68, 68, 0.25);
+        }
+
+        /* Resultado */
+        body.modo-emergencia #resultado {
+            background: #7f1d1d;
+            border-left: 8px solid #ef4444;
+            color: #fff;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+        }
+
+        body.modo-emergencia #resultado.success {
+            background: #047857;
+            border-left-color: #4cd964;
+            box-shadow: 0 0 20px rgba(76, 217, 100, 0.4);
+        }
+
+        @keyframes alertaEmergencia {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+        }
+
+        /* =========================================================
+           CELULARES
+           ========================================================= */
+
+        @media (max-width: 500px) {
+            body { padding: 12px; }
+            .header-scanner { margin-bottom: 12px; }
+            .controls { padding: 15px; }
+            body.modo-emergencia .header-scanner::before {
+                font-size: 0.9rem;
+                padding: 10px 6px;
+            }
+            body.modo-emergencia .header-scanner h2 { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header-scanner">
+        <img src="logo.png" alt="" style="max-height: 50px; margin-bottom: 10px;">
+        <h2 id="titulo-scanner">Registrar Aluno</h2>
+    </div>
+
+    <div class="controls" id="container-controls">
+        <label for="responsavel">Autorizado por:</label>
+        <select id="responsavel">
+            <option value="Professor(a)">👨‍🏫 Professor(a)</option>
+            <option value="Pedagoga">👩‍💼 Pedagoga</option>
+            <option value="Inspetoria">👮 Inspetoria</option>
+            <option value="Direção">🏛️ Direção</option>
+        </select>
+
+        <label for="localDestino">Ação / Destino:</label>
+        <select id="localDestino">
+            <optgroup label="Fluxo de Sala">
+                <option value="SALA DE AULA">🟢 ENTRADA: Sala de Aula</option>
+                <option value="DISPENSADO">🔴 SAÍDA: Dispensado (Ir embora)</option>
+            </optgroup>
+            <optgroup label="Saídas Temporárias">
+                <option value="Banheiro">🧻 Banheiro</option>
+                <option value="Bebedouro">💧 Bebedouro</option>
+                <option value="Pedagogia">📋 Pedagogia</option>
+                <option value="Pátio">🌳 Pátio</option>
+                <option value="Aula Vaga">🏫 Aula Vaga (50 min)</option>
+            </optgroup>
+        </select>
+    </div>
+
+    <div id="reader"></div>
+
+    <div id="resultado" class="scanning">
+        Aguardando leitura do QR Code...
+    </div>
+
+    <!-- Biblioteca QR Code -->
+    <script src="https://unpkg.com/html5-qrcode"></script&gt;
+
+    <!-- Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js&quot;;
+
+        /*
+         * Não precisamos mais depender do Firebase Client
+         * para descobrir o estado da emergência.
+         *
+         * O scanner consulta /api/scanner,
+         * que usa Firebase Admin no servidor.
+         */
+
+        /* =========================================================
+           AUTENTICAÇÃO BÁSICA
+           ========================================================= */
+
+        if (sessionStorage.getItem('logado') !== 'true') {
+            window.location.replace("index.html");
+        }
+
+        /* =========================================================
+           ESTADO GLOBAL
+           ========================================================= */
+
+        window.modoEmergenciaAtivo = false;
+        window.isProcessing = false;
+
+        /* =========================================================
+           ELEMENTOS
+           ========================================================= */
+
+        const body = document.body;
+        const resDiv = document.getElementById('resultado');
+        const controls = document.getElementById('container-controls');
+        const selectDestino = document.getElementById('localDestino');
+        const selectResponsavel = document.getElementById('responsavel');
+        const titulo = document.getElementById('titulo-scanner');
+
+        /* =========================================================
+           FIREBASE CLIENT
+           ========================================================= */
+
+        const firebaseConfig = {
+            databaseURL: "https://school-tracker-2026-default-rtdb.firebaseio.com/&quot;
+        };
+
+        initializeApp(firebaseConfig);
+
+        /* =========================================================
+           ÁUDIO
+           ========================================================= */
+
+        function playBeep(times, freq) {
+            try {
+                const context = new (window.AudioContext || window.webkitAudioContext)();
+                for (let i = 0; i < times; i++) {
+                    setTimeout(() => {
+                        const osc = context.createOscillator();
+                        const gain = context.createGain();
+                        osc.connect(gain);
+                        gain.connect(context.destination);
+                        osc.frequency.value = freq;
+                        osc.gain.value = 0.1;
+                        osc.start();
+                        osc.stop(context.currentTime + 0.1);
+                    }, i * 200);
+                }
+            } catch (e) {
+                console.warn("Áudio não suportado");
+            }
+        }
+
+        /* =========================================================
+           ATIVAR EMERGÊNCIA
+           ========================================================= */
+
+        function ativarModoEmergencia() {
+            console.log("🚨 ATIVANDO MODO DE EMERGÊNCIA NO SCANNER");
+
+            /* Evita executar novamente se já estiver ativo. */
+            const primeiraAtivacao = !window.modoEmergenciaAtivo;
+            window.modoEmergenciaAtivo = true;
+
+            /* Visual */
+            body.classList.add("modo-emergencia");
+
+            /* Título */
+            if (titulo) {
+                titulo.innerText = "🚨 MODO DE EMERGÊNCIA";
+            }
+
+            /* Cria a opção especial somente se ainda não existir. */
+            let optEmergencia = document.getElementById('opt-emergencia');
+
+            if (!optEmergencia) {
+                optEmergencia = document.createElement('option');
+                optEmergencia.id = 'opt-emergencia';
+                optEmergencia.value = 'AREA SEGURA';
+                optEmergencia.textContent = '🚨 ÁREA SEGURA (Ponto de Encontro)';
+                selectDestino.prepend(optEmergencia);
+            }
+
+            /* Define a opção. */
+            selectDestino.value = 'AREA SEGURA';
+
+            /* TRAVA REALMENTE OS DOIS SELECTS. */
+            selectDestino.disabled = true;
+            selectResponsavel.disabled = true;
+
+            /* Reforço visual. */
+            controls.style.borderColor = "#ef4444";
+            controls.style.boxShadow = "0 0 15px rgba(239, 68, 68, 0.5)";
+
+            /* Mensagem. Não sobrescreve uma leitura que esteja em andamento. */
+            if (!window.isProcessing) {
+                resDiv.innerHTML = "🚨 MODO EMERGÊNCIA ATIVO<br><small>🛡️ BIPAR SOMENTE PARA ÁREA SEGURA</small>";
+                resDiv.className = "error";
+            }
+
+            /* Beeps somente na primeira detecção da emergência. */
+            if (primeiraAtivacao) {
+                playBeep(4, 900);
+            }
+        }
+
+        /* =========================================================
+           DESATIVAR EMERGÊNCIA
+           ========================================================= */
+
+        function desativarModoEmergencia() {
+            if (!window.modoEmergenciaAtivo) {
+                return;
+            }
+
+            console.log("🟢 SCANNER VOLTANDO AO MODO NORMAL");
+            window.modoEmergenciaAtivo = false;
+
+            body.classList.remove("modo-emergencia");
+
+            if (titulo) {
+                titulo.innerText = "Registrar Aluno";
+            }
+
+            /* Remove opção especial. */
+            const optEmergencia = document.getElementById('opt-emergencia');
+            if (optEmergencia) {
+                optEmergencia.remove();
+            }
+
+            /* LIBERA os dois selects. */
+            selectDestino.disabled = false;
+            selectResponsavel.disabled = false;
+
+            /* Restaura visual. */
+            controls.style.borderColor = "transparent";
+            controls.style.boxShadow = "none";
+
+            /* Mensagem normal. */
+            if (!window.isProcessing) {
+                resDiv.innerHTML = "Aguardando leitura do QR Code...";
+                resDiv.className = "scanning";
+            }
+        }
+
+        /* =========================================================
+           CONSULTA O ESTADO DO SISTEMA
+           Agora o navegador pergunta ao próprio backend.
+           O backend usa Firebase Admin.
+           ========================================================= */
+
+        let primeiroEstadoRecebido = false;
+
+        async function verificarEstadoEmergencia() {
+            try {
+                const resposta = await fetch('/api/scanner?estado=1', {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
+
+                if (!resposta.ok) {
+                    throw new Error(`HTTP ${resposta.status}`);
+                }
+
+                const dados = await resposta.json();
+                console.log("📡 Estado recebido da API:", dados.estado);
+
+                if (dados.estado === "EMERGENCIA") {
+                    ativarModoEmergencia();
+                } else {
+                    desativarModoEmergencia();
+                }
+
+                primeiroEstadoRecebido = true;
+
+            } catch (erro) {
+                console.warn("⚠️ Não foi possível consultar o estado:", erro);
+
+                /*
+                 * IMPORTANTE:
+                 * Se a consulta falhar, NÃO desativamos uma emergência que já estava ativa.
+                 * Isso evita que um problema temporário de internet libere os selects.
+                 */
+                if (!primeiroEstadoRecebido) {
+                    console.warn("⏳ Aguardando primeira confirmação do estado...");
+                }
+            }
+        }
+
+        /* Primeira consulta imediatamente. */
+        verificarEstadoEmergencia();
+
+        /* Depois verifica periodicamente (1 segundo). */
+        setInterval(verificarEstadoEmergencia, 1000);
+
+        /* =========================================================
+           LEITURA DO QR CODE
+           ========================================================= */
+
+        function onScanSuccess(decodedText) {
+            if (window.isProcessing) {
+                return;
+            }
+
+            window.isProcessing = true;
+
+            /*
+             * EM EMERGÊNCIA:
+             * O select NÃO importa.
+             * O destino é SEMPRE AREA SEGURA.
+             */
+            const local = window.modoEmergenciaAtivo ? "AREA SEGURA" : selectDestino.value;
+            const autorizacao = window.modoEmergenciaAtivo ? "PLANO DE ABANDONO" : selectResponsavel.value;
+
+            console.log("📲 QR LIDO:", decodedText);
+            console.log("📍 Destino enviado:", local);
+            console.log("🔐 Autorização enviada:", autorizacao);
+
+            resDiv.innerHTML = `⏳ Sincronizando: ${decodedText}...`;
+            resDiv.className = "scanning";
+
+            fetch('/api/scanner', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    alunoTag: decodedText,
+                    localDestino: local,
+                    autorizadoPor: autorizacao,
+                    timestamp: new Date().toISOString()
+                })
+            })
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.message || `Erro HTTP ${res.status}`);
+                }
+                return data;
+            })
+            .then(data => {
+                if (data.success) {
+                    const msgSucesso = (data.mensagem === "ALUNO EM ÁREA SEGURA" || local === "AREA SEGURA")
+                        ? "🛡️ ALUNO SEGURO NO PONTO DE ENCONTRO!"
+                        : "✅ REGISTRO CONFIRMADO!";
+
+                    resDiv.innerHTML = `${msgSucesso}<br><small>${data.nome || decodedText}</small>`;
+                    resDiv.className = "success";
+                    playBeep(1, 880);
+                } else {
+                    throw new Error(data.message || "Erro na API");
+                }
+            })
+            .catch(err => {
+                console.error("❌ Erro no Scanner:", err);
+                resDiv.innerHTML = `❌ ${err.message || "Falha no Registro"}`;
+                resDiv.className = "error";
+                playBeep(3, 200);
+            })
+            .finally(() => {
+                setTimeout(() => {
+                    if (window.modoEmergenciaAtivo) {
+                        resDiv.innerHTML = "🚨 MODO EMERGÊNCIA ATIVO<br><small>🛡️ Aguardando próximo aluno...</small>";
+                        resDiv.className = "error";
+                    } else {
+                        resDiv.innerHTML = "Aguardando leitura do QR Code...";
+                        resDiv.className = "scanning";
+                    }
+                    window.isProcessing = false;
+                }, 2000);
+            });
+        }
+
+        /* =========================================================
+           INICIALIZAÇÃO DO SCANNER
+           ========================================================= */
+
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader",
+            {
+                fps: 15,
+                qrbox: function(viewfinderWidth, viewfinderHeight) {
+                    const minEdgePercentage = 0.7;
+                    const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+                    const qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+                    return { width: qrboxSize, height: qrboxSize };
+                },
+                aspectRatio: 1.0,
+                rememberLastUsedCamera: true,
+                showTorchButtonIfSupported: true
+            }
+        );
+
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+
+</body>
+</html>

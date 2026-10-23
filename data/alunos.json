@@ -1,0 +1,149 @@
+[
+  {
+    "id": 1,
+    "nome": "Weslley Gabriel Oliveira Daeski",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-001",
+    "sexo": "M"
+  },
+   {
+    "id": 2,
+    "nome": "Ana Beatriz de Souza Juglari Oliveira",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-002",
+    "sexo": "F"
+  },
+   {
+    "id": 3,
+    "nome": "Stefany Martins",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-003",
+    "sexo": "F"
+  },
+   {
+    "id": 4,
+    "nome": "Matheus Henrique Pereira Kuchta",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-004",
+    "sexo": "M"
+  },
+   {
+    "id": 5,
+    "nome": "Nicolly de Lima Matos",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-005",
+    "sexo": "F"
+  },
+   {
+    "id": 6,
+    "nome": "Vitor Hugo Barbosa Silva",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-006",
+    "sexo": "M"
+  },
+   {
+    "id": 7,
+    "nome": "Vinicius Vidal Cezar",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-007",
+    "sexo": "M"
+  },
+   {
+    "id": 8,
+    "nome": "Pedro miguel Bzerra Klososki",
+    "turma": "3 DS-A",
+    "tag": "ALUNO-2026-008",
+    "sexo": "M"
+  },
+   {
+    "id": 9,
+    "nome": "Mariana Fvaro Bugati Ramos",
+    "turma": "3 DS-B",
+    "tag": "ALUNO-2026-009",
+    "sexo": "F"
+  },
+   {
+    "id": 10,
+    "nome": "Katiusca Gabriela Quintana Gomez",
+    "turma": "3 DS-B",
+    "tag": "ALUNO-2026-010",
+    "sexo": "F"
+  },
+   {
+    "id": 11,
+    "nome": "Eriannys Sinai Noriega Vasquez",
+    "turma": "3 DS-B",
+    "tag": "ALUNO-2026-011",
+    "sexo": "F"
+  },
+   {
+    "id": 12,
+    "nome": "Ildemares Obieda Jimenez Solano",
+    "turma": "3 DS-B",
+    "tag": "ALUNO-2026-012",
+    "sexo": "F"
+  },
+   {
+    "id": 13,
+    "nome": "Leandro Daniel Montilla Ramirez",
+    "turma": "3 DS-B",
+    "tag": "ALUNO-2026-013",
+    "sexo": "M"
+  },
+   {
+    "id": 14,
+    "nome": "Luis Keiner Rojas Rincon",
+    "turma": "3 DS-B",
+    "tag": "ALUNO-2026-014",
+    "sexo": "M"
+  },
+   {
+    "id": 15,
+    "nome": "Luiz Eduardo Alves dos Santos",
+    "turma": "3 DS-B",
+    "tag": "ALUNO-2026-015",
+    "sexo": "M"
+  },
+   {"id": 16,
+    "nome": "Yackson Kayke Souza dos Santos",
+    "turma": "3 DS-C",
+    "tag": "ALUNO-2026-016",
+    "sexo": "M"
+  },
+   {"id": 17,
+    "nome": "Maria Eduarda Ferreira da Luz",
+    "turma": "3 DS-C",
+    "tag": "ALUNO-2026-017",
+    "sexo": "F"
+  },
+   {"id": 18,
+    "nome": "Luara Maria Alves Barboza",
+    "turma": "3 DS-C",
+    "tag": "ALUNO-2026-018",
+    "sexo": "F"
+  },
+   {"id": 19,
+    "nome": "Gabriel da Silva Rosario",
+    "turma": "3 DS-C",
+    "tag": "ALUNO-2026-019",
+    "sexo": "M"
+  },
+   {"id": 20,
+    "nome": "Fernanda Leonardo Moreira",
+    "turma": "3 DS-C",
+    "tag": "ALUNO-2026-020",
+    "sexo": "F"
+  },
+   {"id": 21,
+    "nome": "Evellyn de Souza Silva Rodrigues",
+    "turma": "3 DS-C",
+    "tag": "ALUNO-2026-021",
+    "sexo": "F"
+  },
+   {"id": 22,
+    "nome": "Ana maria Araujo Baumann",
+    "turma": "3 DS-C",
+    "tag": "ALUNO-2026-022",
+    "sexo": "F"
+  }
+]

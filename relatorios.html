@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatórios - School Tracker</title>
+    <link rel="icon" href="favicon_avelino.ico" type="image/x-icon">
+    <!-- Scripts v10 (Igual ao seu Telão) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script&gt;
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: white; padding: 20px; }
+        .filters { display: flex; gap: 10px; margin-bottom: 20px; background: #1e293b; padding: 15px; border-radius: 8px; flex-wrap: wrap; }
+        input, button { padding: 10px; border-radius: 5px; border: none; outline: none; }
+        input[type="text"] { flex-grow: 1; min-width: 200px; }
+       
+        .chart-container { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 30px; height: 300px; }
+       
+        table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #334155; }
+        th { background: #334155; color: #3b82f6; text-transform: uppercase; font-size: 0.8rem; }
+        tr:hover { background: #1e293b; }
+       
+        .btn-filter { background: #3b82f6; color: white; cursor: pointer; font-weight: bold; }
+        .btn-print { background: #10b981; color: white; cursor: pointer; font-weight: bold; }
+
+        /* AJUSTE 1: Classe específica para o botão voltar */
+        .btn-voltar { background: transparent; color: #94a3b8; border: 1px solid #334155; margin-bottom: 15px; cursor: pointer; }
+       
+        .print-header { display: none; }
+
+        @media print {
+            /* AJUSTE 2: Incluído .btn-voltar na lista de ocultação */
+            .filters, .chart-container, .btn-print, .btn-voltar, h2 { display: none !important; }
+            .print-header { display: block !important; color: black; text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; }
+            body { background: white; color: black; padding: 0; }
+            table { width: 100%; background: white; color: black; border: 1px solid #000; }
+            th, td { border: 1px solid #000; padding: 8px; color: black !important; }
+            th { background: #eee !important; }
+           
+            body::after {
+                content: "\A\A __________________________________________\A Assinatura do Responsável (Ciente)";
+                display: block; text-align: center; margin-top: 50px; white-space: pre; font-weight: bold;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="print-header">
+        <h1>SISTEMA DE MONITORAMENTO ESCOLAR</h1>
+        <h3>Relatório Individual de Movimentação do Aluno</h3>
+        <p>Data de emissão: <span id="dataEmissao"></span></p>
+    </div>
+
+    <!-- AJUSTE 3: Alterado para history.back() para navegação limpa -->
+    <button type="button" id="btnVoltarTelao" class="btn-voltar">
+    ← Voltar
+    </button>
+
+    <h2>📊 Inteligência Pedagógica</h2>
+
+    <div class="filters">
+        <input type="date" id="dataInicio">
+        <input type="date" id="dataFim">
+        <input type="text" id="buscaAluno" placeholder="Digite o nome do aluno para filtrar...">
+        <button onclick="filtrarRelatorio()" class="btn-filter">🔍 Analisar</button>
+        <button onclick="prepararImpressao()" class="btn-print">🖨️ Gerar Documento Pais</button>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="chartFrequencia"></canvas>
+    </div>
+
+    <table id="tabelaRelatorio">
+        <thead>
+            <tr>
+                <th>Data/Hora Saída</th>
+                <th>Nome do Aluno</th>
+                <th>Turma</th>
+                <th>Destino</th>
+                <th>Tempo Fora</th>
+                <th>Autorização</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="6" style="text-align:center;">Clique em Analisar para carregar os dados...</td></tr>
+        </tbody>
+    </table>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js&quot;;
+        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js&quot;;
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js&quot;;
+
+        const firebaseConfig = {
+    apiKey: "minha API",
+    authDomain: "meu domínio",
+    databaseURL: "minha URl",
+    projectId: "meu ID"
+};
+
+       const app = initializeApp(firebaseConfig);
+       const db = getDatabase(app);
+       const auth = getAuth(app);
+
+        let meuGrafico = null;
+let usuarioAutenticado = false;
+
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        usuarioAutenticado = true;
+        console.log("🔒 Relatórios: autenticação confirmada. UID =", user.uid);
+    } else {
+        usuarioAutenticado = false;
+        console.warn("⚠️ Relatórios: usuário não autenticado.");
+    }
+});
+
+async function filtrarRelatorio() {
+    if (!usuarioAutenticado) {
+    alert("Aguardando autenticação com o Firebase. Tente novamente em alguns segundos.");
+    return;
+}
+            const nomeBusca = document.getElementById('buscaAluno').value.toLowerCase();
+            const dInicio = document.getElementById('dataInicio').value;
+            const dFim = document.getElementById('dataFim').value;
+
+            let snapshot;
+
+try {
+    snapshot = await get(ref(db, 'movimentacoes'));
+} catch (error) {
+    console.error("❌ Erro ao acessar movimentações:", error);
+    alert("Não foi possível acessar as movimentações do Firebase.\n\nErro: " + error.message);
+    return;
+}
+
+if (!snapshot.exists()) {
+    alert("Sem dados no banco.");
+    return;
+}
+
+            const dados = snapshot.val();
+            let listaFiltrada = [];
+            let contagemParaGrafico = {};
+
+            Object.values(dados).forEach(mov => {
+                if (!mov.data_hora_saida) return;
+
+                const dataMov = mov.data_hora_saida.split('T')[0];
+                const nomeAluno = (mov.nome || "").toLowerCase();
+
+                const bateData = (!dInicio || dataMov >= dInicio) && (!dFim || dataMov <= dFim);
+                const bateNome = !nomeBusca || nomeAluno.includes(nomeBusca);
+
+                if (bateData && bateNome) {
+                    listaFiltrada.push(mov);
+                    contagemParaGrafico[mov.nome] = (contagemParaGrafico[mov.nome] || 0) + 1;
+                }
+            });
+
+            atualizarInterface(listaFiltrada, contagemParaGrafico);
+        }
+
+        function atualizarInterface(lista, contagem) {
+            const tbody = document.querySelector('#tabelaRelatorio tbody');
+            tbody.innerHTML = '';
+
+            lista.sort((a,b) => new Date(b.data_hora_saida) - new Date(a.data_hora_saida));
+
+            lista.forEach(m => {
+                const hSaida = new Date(m.data_hora_saida);
+                const hRetorno = m.data_hora_retorno ? new Date(m.data_hora_retorno) : null;
+                const duracao = hRetorno ? Math.floor((hRetorno - hSaida)/60000) + " min" : "Não retornou";
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${hSaida.toLocaleDateString()} ${hSaida.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
+                        <td><strong>${m.nome}</strong></td>
+                        <td>${m.turma || '-'}</td>
+                        <td>${m.local_destino}</td>
+                        <td>${duracao}</td>
+                        <td>${m.autorizado_por || 'Sistema'}</td>
+                    </tr>
+                `;
+            });
+
+            const ctx = document.getElementById('chartFrequencia').getContext('2d');
+            if(meuGrafico) meuGrafico.destroy();
+
+            const labels = Object.keys(contagem).slice(0, 10);
+            const valores = Object.values(contagem).slice(0, 10);
+
+            meuGrafico = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total de Saídas no Período',
+                        data: valores,
+                        backgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { color: '#fff' } },
+                        x: { ticks: { color: '#fff' } }
+                    },
+                    plugins: { legend: { labels: { color: '#fff' } } }
+                }
+            });
+        }
+
+        window.filtrarRelatorio = filtrarRelatorio;
+        window.prepararImpressao = () => {
+            document.getElementById('dataEmissao').innerText = new Date().toLocaleDateString();
+            window.print();
+        };
+        document.getElementById('btnVoltarTelao').addEventListener('click', () => {
+    window.location.replace('telao.html');
+});
+    </script>
+</body>
+</html>

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Tracker - Monitoramento Realtime</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon_avelino.ico" type="image/x-icon">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script&gt;
+    <style>
+    /* ==========================================================================
+       ESTILOS PADRÃO (TELÃO / PC)
+       ========================================================================== */
+    .turmas-summary { margin-bottom: 20px; }
+   
+    /* Turmas em 3 colunas no PC */
+    .turmas-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+    }
+   
+    .turma-stat-card {
+        background: rgba(30, 41, 59, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        border-top: 4px solid #3b82f6;
+        text-align: center;
+    }
+    .turma-stat-card h4 { margin: 0 0 10px 0; color: #94a3b8; }
+    .stat-row { display: flex; justify-content: space-around; font-size: 0.9rem; margin-bottom: 10px; }
+    .progress-bar { height: 8px; background: #0f172a; border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #22c55e; transition: width 0.5s; }
+   
+    /* Modais e Chamada */
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
+    .modal-content { background: #1e293b; margin: 5% auto; padding: 20px; border-radius: 15px; width: 85%; max-width: 500px; border: 1px solid #334155; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+    .close-btn { color: #94a3b8; font-size: 28px; cursor: pointer; }
+    .lista-chamada { max-height: 400px; overflow-y: auto; }
+    .aluno-item { display: flex; justify-content: space-between; padding: 12px 10px; border-bottom: 1px solid #334155; }
+    .status-presente { color: #22c55e; font-weight: bold; }
+    .status-ausente { color: #64748b; font-style: italic; }
+    .btn-chamada { background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; color: #3b82f6; border-radius: 5px; padding: 5px; cursor: pointer; width: 100%; margin-top: 10px; }
+   
+    /* Painel do Gráfico (Ajustado para não vazar no PC) */
+    .analytics-side {
+        background: rgba(30, 41, 59, 0.7);
+        padding: 20px;
+        border-radius: 15px;
+        border: 1px solid #334155;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        max-height: 450px;
+        box-sizing: border-box;
+        overflow: hidden; /* Evita que o gráfico estoure a borda inferior */
+    }
+
+    .analytics-side canvas {
+        max-width: 100% !important;
+        max-height: 260px !important; /* Ajuste fino na altura do gráfico */
+        margin-top: 15px;
+    }
+
+    .btn-emergencia {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid #ef4444;
+        padding: 6px 12px;
+        border-radius: 6px;
+        color: #ef4444;
+        font-size: 0.75rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+        text-align: center;
+    }
+   
+    @keyframes pulse-red {
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    /* ==========================================================================
+       ADAPTAÇÃO EXCLUSIVA PARA CELULAR (SEM AFETAR O PC)
+       ========================================================================== */
+    @media (max-width: 768px) {
+        /* Transforma as 3 turmas num carrossel com rolagem lateral fluida */
+        .turmas-grid {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            gap: 12px !important;
+            padding-bottom: 10px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Cada card ganha tamanho adequado para deslizar no celular */
+        .turma-stat-card {
+            flex: 0 0 82% !important; /* Ocupa 82% da tela dando spoiler da próxima sala */
+            box-sizing: border-box;
+        }
+
+        .analytics-side {
+            max-height: none !important; /* No celular ele pode crescer livremente na vertical */
+            height: auto !important;
+        }
+    }
+</style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="stats-bar" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px;">
+            <!-- GRUPO DE 4 BOTÕES: 2 EM CIMA, 2 EM BAIXO -->
+            <div class="nav-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 320px; flex-shrink: 0;">
+                <button onclick="window.location.replace('relatorios.html')" style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; padding: 6px 10px; border-radius: 6px; color: #3b82f6; font-size: 0.7rem; font-weight: bold; cursor: pointer; white-space: nowrap;">📊 RELATÓRIOS</button>
+                <button onclick="window.location.replace('mapa.html')" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; padding: 6px 10px; border-radius: 6px; color: #10b981; font-size: 0.7rem; font-weight: bold; cursor: pointer; white-space: nowrap;">📍 MAPA REALTIME</button>
+                <div id="btnAbandono" class="btn-emergencia" style="font-size: 0.7rem; white-space: nowrap;">🚨 ABANDONO</div>
+                <button id="btnTurno" style="background: rgba(139, 92, 246, 0.1); border: 1px solid #8b5cf6; padding: 6px 10px; border-radius: 6px; color: #8b5cf6; font-size: 0.7rem; font-weight: bold; cursor: pointer; white-space: nowrap;">☀️ TURNO: MANHÃ</button>
+            </div>
+
+            <div class="stats-group" style="display: flex; gap: 30px;">
+                <div class="stat-item">
+                    <span class="label" style="display: block; font-size: 0.7rem; color: #94a3b8;">EM TRÂNSITO</span>
+                    <span id="total-fora" class="value" style="font-size: 1.8rem; font-weight: bold; color: #fff;">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="label" style="display: block; font-size: 0.7rem; color: #ef4444;">ATRASADOS</span>
+                    <span id="total-atraso" class="value" style="font-size: 1.8rem; font-weight: bold; color: #ef4444;">0</span>
+                </div>
+            </div>
+
+            <div class="clock-group">
+                <div id="relogio" style="font-family: monospace; font-size: 1.8rem; color: #3b82f6; background: rgba(15, 23, 42, 0.5); padding: 5px 15px; border-radius: 8px; border: 1px solid #334155;">00:00:00</div>
+            </div>
+        </header>
+
+        <section class="turmas-summary">
+            <div id="resumo-turmas" class="turmas-grid"></div>
+        </section>
+
+        <main class="main-content">
+            <section class="monitor-section">
+                <h2>Alunos Fora de Sala</h2>
+                <div id="grid-alunos" class="student-grid"></div>
+            </section>
+            <aside class="analytics-side">
+                <h3>Distribuição por Local</h3>
+                <canvas id="graficoLocais"></canvas>
+            </aside>
+        </main>
+    </div>
+
+    <div id="modalChamada" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="tituloModal">Chamada</h3>
+                <span class="close-btn" onclick="fecharModal()">&times;</span>
+            </div>
+            <div id="corpoModal" class="lista-chamada"></div>
+        </div>
+    </div>
+<script type="module">
+    if (sessionStorage.getItem('logado') !== 'true') {
+        window.location.replace("index.html");
+    }
+   
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js&quot;;
+    import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js&quot;;
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js&quot;;
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCHxMR6NRrqiNSypsmxywtfu5x9H6ZlvOA",
+        authDomain: "school-tracker-2026.firebaseapp.com",
+        databaseURL: "https://school-tracker-2026-default-rtdb.firebaseio.com&quot;,
+        projectId: "school-tracker-2026"
+    };
+    const app = initializeApp(firebaseConfig);
+   
+    window.db = getDatabase(app);
+    const db = window.db;
+    const auth = getAuth(app);
+
+    let listaAlunosCompleta = {};
+    let movimentacoesAtuais = [];
+    let meuGrafico = null;
+
+    // --- LÓGICA DE ALTERNÂNCIA DO BOTÃO TURNO ---
+    const turnos = [
+        { label: "☀️ TURNO: MANHÃ" },
+        { label: "⛅ TURNO: TARDE" },
+        { label: "🌙 TURNO: NOITE" }
+    ];
+    let indiceTurno = 0;
+
+    document.getElementById('btnTurno').onclick = () => {
+        indiceTurno = (indiceTurno + 1) % turnos.length;
+        document.getElementById('btnTurno').innerText = turnos[indiceTurno].label;
+    };
+
+    // --- ESCUDO DE AUTENTICAÇÃO REALTIME ---
+    console.log("Iniciando monitoramento de autenticação...");
+   
+    onAuthStateChanged(auth, (user) => {
+        console.log("onAuthStateChanged disparado. Usuário encontrado:", user);
+       
+        if (user) {
+            console.log("🔒 Autenticação confirmada no Back-end pelo Firebase: UID =", user.uid);
+
+            onValue(ref(db, 'configuracao/estado_sistema'), (snapshot) => {
+                const estado = snapshot.val();
+                console.log("Estado do sistema detectado:", estado);
+                if (estado === "EMERGENCIA") {
+                    console.log("🚨 Redirecionando para tela de emergência...");
+                    window.location.href = "telao_abandono.html";
+                }
+            });
+
+            onValue(ref(db, 'alunos'), (snapshot) => {
+                listaAlunosCompleta = snapshot.val() || {};
+                console.log("Dados de alunos recebidos:", Object.keys(listaAlunosCompleta).length, "registros.");
+                processarDados();
+            });
+
+            onValue(ref(db, 'movimentacoes'), (snapshot) => {
+                const data = snapshot.val();
+                movimentacoesAtuais = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+                console.log("Dados de movimentações recebidos:", movimentacoesAtuais.length, "registros.");
+                processarDados();
+            });
+
+        } else {
+            console.warn("⚠️ O Firebase não encontrou um usuário logado no back-end.");
+        }
+    });
+
+    // --- BOTÃO DE ABANDONO ---
+    document.getElementById('btnAbandono').onclick = async (e) => {
+        e.preventDefault();
+       
+        if(confirm("Deseja ATIVAR o Protocolo de Abandono em toda a escola?")) {
+            try {
+                console.log("Tentando gravar no Firebase...");
+               
+                await update(ref(window.db, 'configuracao'), {
+                    estado_sistema: "EMERGENCIA",
+                    inicio_emergencia: new Date().toISOString()
+                });
+
+                console.log("✅ Gravação confirmada pelo servidor.");
+
+            } catch (error) {
+                console.error("❌ ERRO AO ACESSAR FIREBASE:", error);
+                alert("Erro de conexão: " + error.message);
+            }
+        }
+    };
+
+    function processarDados() {
+        renderizarResumoTurmas();
+        renderizarDashboard();
+        atualizarGrafico();
+    }
+
+    function renderizarResumoTurmas() {
+        const container = document.getElementById('resumo-turmas');
+        if (!container) return;
+
+        const turmasEncontradas = [...new Set(Object.values(listaAlunosCompleta).map(a => a.turma))].sort();
+
+        container.innerHTML = turmasEncontradas.map(turmaNome => {
+            const alunosDaTurma = Object.values(listaAlunosCompleta).filter(a => a.turma === turmaNome);
+            const totalMatriculados = alunosDaTurma.length;
+            const presentesNaEscola = alunosDaTurma.filter(a => a.status === 'presente').length;
+            const alunosFora = movimentacoesAtuais.filter(m => m.turma === turmaNome && m.status === 'em_andamento').length;
+            const emSala = Math.max(0, presentesNaEscola - alunosFora);
+            const perc = totalMatriculados > 0 ? (emSala / totalMatriculados) * 100 : 0;
+
+            return `
+                <div class="turma-stat-card">
+                    <h4>${turmaNome}</h4>
+                    <div class="stat-row">
+                        <span>Sala: <strong>${emSala}</strong></span>
+                        <span>Fora: <strong style="color:#eab308">${alunosFora}</strong></span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${perc}%"></div></div>
+                    <button class="btn-chamada" onclick="abrirChamada('${turmaNome}')">Chamada (${presentesNaEscola})</button>
+                </div>`;
+        }).join('');
+    }
+
+   function renderizarDashboard() {
+        const grid = document.getElementById('grid-alunos');
+        const emAndamento = movimentacoesAtuais.filter(m => m.status === 'em_andamento');
+        document.getElementById('total-fora').innerText = emAndamento.length;
+       
+        const agora = new Date();
+        let totalAtrasados = 0;
+
+        grid.innerHTML = emAndamento.map(m => {
+            const dataSaida = new Date(m.data_hora_saida);
+            const diffMinutos = Math.floor((agora - dataSaida) / 60000);
+           
+            let limite = m.tempo_limite || 10;
+           
+            if (m.local_destino && m.local_destino.toUpperCase().includes("AULA VAGA")) {
+                limite = 50;
+            }
+
+            const isAtrasado = diffMinutos > limite;
+            if (isAtrasado) totalAtrasados++;
+
+            const tempoExcedido = diffMinutos - limite;
+
+            let textoTempo = `🕒 ${diffMinutos} min`;
+            if (isAtrasado) {
+                textoTempo += ` <span style="font-size: 0.85rem; display: block; color: #ef4444; font-weight: bold; margin-top: 4px;">(excedeu ${tempoExcedido} min)</span>`;
+            } else {
+                textoTempo += ` <span style="font-size: 0.75rem; display: block; color: #94a3b8; margin-top: 4px;">(limite: ${limite} min)</span>`;
+            }
+
+            return `
+                <div class="student-card ${isAtrasado ? 'critical' : ''}">
+                    <span class="turma-tag">${m.turma}</span>
+                    <h3>${m.nome}</h3>
+                    <p>📍 ${m.local_destino}</p>
+                    <div class="info-tempo">
+                        ${textoTempo}
+                    </div>
+                </div>`;
+        }).join('');
+       
+        document.getElementById('total-atraso').innerText = totalAtrasados;
+    }
+
+    function atualizarGrafico() {
+        const canvas = document.getElementById('graficoLocais');
+        const emAndamento = movimentacoesAtuais.filter(m => m.status === 'em_andamento');
+        const contagem = {};
+        emAndamento.forEach(m => { contagem[m.local_destino] = (contagem[m.local_destino] || 0) + 1; });
+        if (meuGrafico) meuGrafico.destroy();
+        if (emAndamento.length > 0) {
+            meuGrafico = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(contagem),
+                    datasets: [{ data: Object.values(contagem), backgroundColor: ['#3b82f6', '#22c55e', '#eab308', '#ef4444'], borderWidth: 0 }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'top', labels: { color: '#fff' } } } }
+            });
+        }
+    }
+
+    window.abrirChamada = function(turmaNome) {
+        const corpo = document.getElementById('corpoModal');
+        document.getElementById('tituloModal').innerText = `Chamada: ${turmaNome}`;
+        corpo.innerHTML = '';
+        Object.values(listaAlunosCompleta)
+            .filter(a => a.turma === turmaNome)
+            .sort((a, b) => a.nome.localeCompare(b.nome))
+            .forEach(a => {
+                const isPresente = a.status === 'presente';
+                corpo.innerHTML += `
+                    <div class="aluno-item">
+                        <span>${a.nome}</span>
+                        <span class="${isPresente ? 'status-presente' : 'status-ausente'}">
+                            ${isPresente ? '● PRESENTE' : '○ AUSENTE'}
+                        </span>
+                    </div>`;
+            });
+        document.getElementById('modalChamada').style.display = "block";
+    }
+   
+    window.fecharModal = () => document.getElementById('modalChamada').style.display = "none";
+
+    setInterval(() => {
+        document.getElementById('relogio').innerText = new Date().toLocaleTimeString('pt-BR');
+    }, 1000);
+
+    setInterval(() => {
+        if (movimentacoesAtuais.length > 0) {
+            processarDados();
+        }
+    }, 30000);
+</script>
+</body>
+</html>

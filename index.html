@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Tracker 2026 - Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon_avelino.ico" type="image/x-icon">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+            background-color: var(--bg-color); /* Usando sua variável do style.css */
+        }
+        .menu-container {
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 90%;
+        }
+       
+        /* Estilização da Logo */
+        .logo-colegio {
+            max-width: 150px;
+            height: auto;
+            margin-bottom: 20px;
+            border-radius: 10px;
+        }
+
+        h1 { margin-bottom: 30px; color: white; font-size: 2rem; }
+       
+        /* --- ESTILOS DO FORMULÁRIO DE LOGIN --- */
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            text-align: left;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .input-group label {
+            color: var(--text-main);
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        .input-group input {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            font-size: 1rem;
+            outline: none;
+        }
+        .input-group input:focus {
+            border-color: #3b82f6;
+        }
+        .btn-submit {
+            padding: 12px;
+            background: #10b981; /* Verde profissional para o botão de entrar */
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 10px;
+        }
+        .btn-submit:hover {
+            background: #059669;
+        }
+        .error-message {
+            color: #ef4444;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 5px;
+            display: none;
+        }
+
+        /* --- MENU PRINCIPAL (INICIALMENTE ESCONDIDO) --- */
+        .btn-group {
+            display: none; /* Escondido até o login estar correto */
+            flex-direction: column;
+            gap: 20px;
+        }
+        .btn {
+            padding: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-decoration: none;
+            color: white;
+            border-radius: 10px;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .btn-scanner { background: #3b82f6; }
+        .btn-telao { background: #8b5cf6; }
+        .btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+       
+        p { margin-top: 25px; font-size: 0.9rem; opacity: 0.7; color: var(--text-main); }
+    </style>
+</head>
+<body>
+
+    <div class="menu-container">
+        <img src="logo.png" alt="Logo do Colégio" class="logo-colegio">
+       
+        <h1>School Tracker</h1>
+       
+        <form id="loginForm" class="login-form">
+            <div class="input-group">
+                <label for="usuario">E-mail de Acesso</label>
+                <input type="email" id="usuario" required placeholder="Ex: professor@escola.com">
+            </div>
+            <div class="input-group">
+                <label for="senha">Chave de Segurança</label>
+                <input type="password" id="senha" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn-submit">Autenticar Portal</button>
+            <div id="mensagemErro" class="error-message">Acesso negado. Credenciais incorretas!</div>
+        </form>
+       
+        <div id="menuBotoes" class="btn-group">
+            <a href="scanner.html" class="btn btn-scanner">📸 Abrir Scanner (Entrada/Saída)</a>
+            <a href="telao.html" class="btn btn-telao">🖥️ Abrir Dashboard (Telão)</a>
+        </div>
+       
+        <p>Colégio Avelino Antonio Vieira - 2026 - <i>Client Mode</i></p>
+    </div>
+
+    <script type="module">
+        // Importando as funções necessárias dos SDKs do Firebase via CDN estável (v10)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js&quot;;
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js&quot;;
+
+        // Sua configuração oficial do Firebase gerada
+        const firebaseConfig = {
+            apiKey: "sua API",
+            authDomain: "seu domínio",
+            databaseURL: "sua url",
+            projectId: "school-tracker-2026",
+            storageBucket: "seu bucket",
+            messagingSenderId: "seu id",
+            appId: "seu appID"
+        };
+
+        // Inicializando o Firebase e o serviço de Autenticação
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Limpa sessões antigas locais ao carregar a página
+        sessionStorage.removeItem('logado');
+
+        // Captura o formulário para interceptar o envio
+        const form = document.getElementById('loginForm');
+
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('usuario').value.trim();
+            const pass = document.getElementById('senha').value.trim();
+            const erro = document.getElementById('mensagemErro');
+            const botoes = document.getElementById('menuBotoes');
+
+            // Tentativa de login direto nos servidores do Firebase
+            signInWithEmailAndPassword(auth, email, pass)
+                .then((userCredential) => {
+                    // Se o Firebase aceitar o e-mail e a senha criados por você lá no console:
+                    sessionStorage.setItem('logado', 'true');
+                   
+                    // Transição visual
+                    form.style.display = "none";
+                    botoes.style.display = "flex";
+                })
+                .catch((error) => {
+                    // Se falhar (usuário inexistente, senha errada, etc.)
+                    erro.style.display = "block";
+                    document.getElementById('senha').value = ""; // Reseta campo da senha
+                    console.error("Erro na autenticação Firebase:", error.code);
+                });
+        });
+    </script>
+</body>
+</html>
