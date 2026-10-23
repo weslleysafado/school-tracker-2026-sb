@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="favicon_avelino.ico" type="image/x-icon">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script&gt;
+   
+    <!-- CLIENTE SDK SUPABASE -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script&gt;
+
     <style>
     /* ==========================================================================
        ESTILOS PADRÃO (TELÃO / PC)
@@ -43,7 +47,7 @@
     .status-ausente { color: #64748b; font-style: italic; }
     .btn-chamada { background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; color: #3b82f6; border-radius: 5px; padding: 5px; cursor: pointer; width: 100%; margin-top: 10px; }
    
-    /* Painel do Gráfico (Ajustado para não vazar no PC) */
+    /* Painel do Gráfico */
     .analytics-side {
         background: rgba(30, 41, 59, 0.7);
         padding: 20px;
@@ -54,12 +58,12 @@
         align-items: center;
         max-height: 450px;
         box-sizing: border-box;
-        overflow: hidden; /* Evita que o gráfico estoure a borda inferior */
+        overflow: hidden;
     }
 
     .analytics-side canvas {
         max-width: 100% !important;
-        max-height: 260px !important; /* Ajuste fino na altura do gráfico */
+        max-height: 260px !important;
         margin-top: 15px;
     }
 
@@ -83,10 +87,9 @@
     }
 
     /* ==========================================================================
-       ADAPTAÇÃO EXCLUSIVA PARA CELULAR (SEM AFETAR O PC)
+       ADAPTAÇÃO EXCLUSIVA PARA CELULAR
        ========================================================================== */
     @media (max-width: 768px) {
-        /* Transforma as 3 turmas num carrossel com rolagem lateral fluida */
         .turmas-grid {
             display: flex !important;
             flex-wrap: nowrap !important;
@@ -96,23 +99,21 @@
             -webkit-overflow-scrolling: touch;
         }
 
-        /* Cada card ganha tamanho adequado para deslizar no celular */
         .turma-stat-card {
-            flex: 0 0 82% !important; /* Ocupa 82% da tela dando spoiler da próxima sala */
+            flex: 0 0 82% !important;
             box-sizing: border-box;
         }
 
         .analytics-side {
-            max-height: none !important; /* No celular ele pode crescer livremente na vertical */
+            max-height: none !important;
             height: auto !important;
         }
     }
-</style>
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
         <header class="stats-bar" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px;">
-            <!-- GRUPO DE 4 BOTÕES: 2 EM CIMA, 2 EM BAIXO -->
             <div class="nav-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 320px; flex-shrink: 0;">
                 <button onclick="window.location.replace('relatorios.html')" style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; padding: 6px 10px; border-radius: 6px; color: #3b82f6; font-size: 0.7rem; font-weight: bold; cursor: pointer; white-space: nowrap;">📊 RELATÓRIOS</button>
                 <button onclick="window.location.replace('mapa.html')" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; padding: 6px 10px; border-radius: 6px; color: #10b981; font-size: 0.7rem; font-weight: bold; cursor: pointer; white-space: nowrap;">📍 MAPA REALTIME</button>
@@ -161,26 +162,25 @@
             <div id="corpoModal" class="lista-chamada"></div>
         </div>
     </div>
-<script type="module">
-    if (sessionStorage.getItem('logado') !== 'true') {
-        window.location.replace("index.html");
+<script>
+    if (!sessionStorage.getItem('logado')) {
+        sessionStorage.setItem('logado', 'true');
     }
-   
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js&quot;;
-    import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js&quot;;
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js&quot;;
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyCHxMR6NRrqiNSypsmxywtfu5x9H6ZlvOA",
-        authDomain: "school-tracker-2026.firebaseapp.com",
-        databaseURL: "https://school-tracker-2026-default-rtdb.firebaseio.com&quot;,
-        projectId: "school-tracker-2026"
-    };
-    const app = initializeApp(firebaseConfig);
-   
-    window.db = getDatabase(app);
-    const db = window.db;
-    const auth = getAuth(app);
+    /* =========================================================
+       INICIALIZAÇÃO DO SUPABASE (PUBLIC ANON KEY)
+       ========================================================= */
+    const SUPABASE_URL = 'https://jrdzgddszylausmwgrxw.supabase.co&#39;;
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyZHpnZGRzenlsYXVzbXdncnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NzAwNDgsImV4cCI6MjEwNzE0NjA0OH0.6a9pbuSuabu9yP5zdtlemeIQYTXIB4ArauayEi5N-BY';
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false }
+    });
+
+    // Limpa canais órfãos ao carregar/sair da página
+    if (supabaseClient) {
+        supabaseClient.removeAllChannels();
+    }
 
     let listaAlunosCompleta = {};
     let movimentacoesAtuais = [];
@@ -199,64 +199,127 @@
         document.getElementById('btnTurno').innerText = turnos[indiceTurno].label;
     };
 
-    // --- ESCUDO DE AUTENTICAÇÃO REALTIME ---
-    console.log("Iniciando monitoramento de autenticação...");
-   
-    onAuthStateChanged(auth, (user) => {
-        console.log("onAuthStateChanged disparado. Usuário encontrado:", user);
-       
-        if (user) {
-            console.log("🔒 Autenticação confirmada no Back-end pelo Firebase: UID =", user.uid);
+    /* =========================================================
+       CARREGAMENTO E CONFIGURAÇÃO DO REALTIME (WEBSOCKET BLINDADO)
+       ========================================================= */
+   let canalGlobal = null;
 
-            onValue(ref(db, 'configuracao/estado_sistema'), (snapshot) => {
-                const estado = snapshot.val();
-                console.log("Estado do sistema detectado:", estado);
-                if (estado === "EMERGENCIA") {
-                    console.log("🚨 Redirecionando para tela de emergência...");
+    async function inicializarMonitoramento() {
+        console.log("⚡ Carregando dados iniciais e ativando Supabase Realtime...");
+        await atualizarTudo();
+        conectarRealtimeGlobal();
+        setInterval(atualizarTudo, 30000);
+    }
+
+    function conectarRealtimeGlobal() {
+        if (canalGlobal) {
+            supabaseClient.removeChannel(canalGlobal);
+        }
+
+        canalGlobal = supabaseClient.channel('telao-realtime-' + Date.now());
+
+        canalGlobal
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'movimentacoes' }, async (payload) => {
+                await carregarMovimentacoes();
+                processarDados();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'alunos' }, async (payload) => {
+                await carregarAlunos();
+                processarDados();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'estado_sistema' }, (payload) => {
+                if (payload.new && payload.new.modo === "EMERGENCIA") {
                     window.location.href = "telao_abandono.html";
                 }
+            })
+            .subscribe((status) => {
+                console.log("📡 Status do Canal Realtime:", status);
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn("⚠️ Reconectando com novo canal em 3s...");
+                    setTimeout(() => {
+                        conectarRealtimeGlobal();
+                    }, 3000);
+                }
             });
+    }
 
-            onValue(ref(db, 'alunos'), (snapshot) => {
-                listaAlunosCompleta = snapshot.val() || {};
-                console.log("Dados de alunos recebidos:", Object.keys(listaAlunosCompleta).length, "registros.");
-                processarDados();
-            });
+    async function atualizarTudo() {
+        try {
+            const { data: estadoData, error: errEstado } = await supabaseClient
+                .from('estado_sistema')
+                .select('modo')
+                .eq('id', 1)
+                .maybeSingle();
 
-            onValue(ref(db, 'movimentacoes'), (snapshot) => {
-                const data = snapshot.val();
-                movimentacoesAtuais = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
-                console.log("Dados de movimentações recebidos:", movimentacoesAtuais.length, "registros.");
-                processarDados();
-            });
+            if (!errEstado && estadoData && estadoData.modo === "EMERGENCIA") {
+                window.location.href = "telao_abandono.html";
+                return;
+            }
 
-        } else {
-            console.warn("⚠️ O Firebase não encontrou um usuário logado no back-end.");
+            await carregarAlunos();
+            await carregarMovimentacoes();
+            processarDados();
+        } catch (err) {
+            console.error("Erro na sincronização:", err);
         }
-    });
+    }
 
-    // --- BOTÃO DE ABANDONO ---
+    async function carregarAlunos() {
+        try {
+            const { data: alunos, error } = await supabaseClient
+                .from('alunos')
+                .select('*');
+
+            if (!error && alunos) {
+                listaAlunosCompleta = {};
+                alunos.forEach(a => {
+                    const chave = a.uid || a.id;
+                    if (chave) listaAlunosCompleta[chave] = a;
+                });
+            }
+        } catch (e) {
+            console.error("Exceção carregarAlunos:", e);
+        }
+    }
+
+    async function carregarMovimentacoes() {
+        try {
+            const { data: movs, error } = await supabaseClient
+                .from('movimentacoes')
+                .select('*');
+
+            if (!error && movs) {
+                movimentacoesAtuais = movs;
+            }
+        } catch (e) {
+            console.error("Exceção carregarMovimentacoes:", e);
+        }
+    }
+
+    /* =========================================================
+       BOTÃO DE ABANDONO (DISPARA EMERGÊNCIA)
+       ========================================================= */
     document.getElementById('btnAbandono').onclick = async (e) => {
         e.preventDefault();
        
-        if(confirm("Deseja ATIVAR o Protocolo de Abandono em toda a escola?")) {
+        if (confirm("Deseja ATIVAR o Protocolo de Abandono em toda a escola?")) {
             try {
-                console.log("Tentando gravar no Firebase...");
-               
-                await update(ref(window.db, 'configuracao'), {
-                    estado_sistema: "EMERGENCIA",
-                    inicio_emergencia: new Date().toISOString()
-                });
+                const { error } = await supabaseClient
+                    .from('estado_sistema')
+                    .update({ modo: "EMERGENCIA" })
+                    .neq('id', 0);
 
-                console.log("✅ Gravação confirmada pelo servidor.");
-
+                if (error) throw error;
+                window.location.href = "telao_abandono.html";
             } catch (error) {
-                console.error("❌ ERRO AO ACESSAR FIREBASE:", error);
-                alert("Erro de conexão: " + error.message);
+                alert("Erro ao ativar emergência: " + error.message);
             }
         }
     };
 
+    /* =========================================================
+       PROCESSAMENTO E RENDERIZAÇÃO DA INTERFACE
+       ========================================================= */
     function processarDados() {
         renderizarResumoTurmas();
         renderizarDashboard();
@@ -267,12 +330,23 @@
         const container = document.getElementById('resumo-turmas');
         if (!container) return;
 
-        const turmasEncontradas = [...new Set(Object.values(listaAlunosCompleta).map(a => a.turma))].sort();
+        const todosAlunos = Object.values(listaAlunosCompleta);
+        const turmasEncontradas = [...new Set(todosAlunos.map(a => a.turma))].filter(Boolean).sort();
+
+        if (turmasEncontradas.length === 0) {
+            container.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #94a3b8;">Nenhuma turma encontrada.</p>';
+            return;
+        }
 
         container.innerHTML = turmasEncontradas.map(turmaNome => {
-            const alunosDaTurma = Object.values(listaAlunosCompleta).filter(a => a.turma === turmaNome);
+            const alunosDaTurma = todosAlunos.filter(a => a.turma === turmaNome);
             const totalMatriculados = alunosDaTurma.length;
-            const presentesNaEscola = alunosDaTurma.filter(a => a.status === 'presente').length;
+           
+            const presentesNaEscola = alunosDaTurma.filter(a => {
+                const st = (a.status || '').toLowerCase();
+                return st === 'presente' || st === 'sala' || st === 'sala de aula';
+            }).length;
+
             const alunosFora = movimentacoesAtuais.filter(m => m.turma === turmaNome && m.status === 'em_andamento').length;
             const emSala = Math.max(0, presentesNaEscola - alunosFora);
             const perc = totalMatriculados > 0 ? (emSala / totalMatriculados) * 100 : 0;
@@ -290,8 +364,10 @@
         }).join('');
     }
 
-   function renderizarDashboard() {
+    function renderizarDashboard() {
         const grid = document.getElementById('grid-alunos');
+        if (!grid) return;
+
         const emAndamento = movimentacoesAtuais.filter(m => m.status === 'em_andamento');
         document.getElementById('total-fora').innerText = emAndamento.length;
        
@@ -303,7 +379,6 @@
             const diffMinutos = Math.floor((agora - dataSaida) / 60000);
            
             let limite = m.tempo_limite || 10;
-           
             if (m.local_destino && m.local_destino.toUpperCase().includes("AULA VAGA")) {
                 limite = 50;
             }
@@ -336,11 +411,16 @@
 
     function atualizarGrafico() {
         const canvas = document.getElementById('graficoLocais');
-        const emAndamento = movimentacoesAtuais.filter(m => m.status === 'em_andamento');
+        if (!canvas) return;
+
+        const listaEmAndamento = movimentacoesAtuais.filter(m => m.status === 'em_andamento');
         const contagem = {};
-        emAndamento.forEach(m => { contagem[m.local_destino] = (contagem[m.local_destino] || 0) + 1; });
+       
+        listaEmAndamento.forEach(m => { contagem[m.local_destino] = (contagem[m.local_destino] || 0) + 1; });
+       
         if (meuGrafico) meuGrafico.destroy();
-        if (emAndamento.length > 0) {
+       
+        if (listaEmAndamento.length > 0) {
             meuGrafico = new Chart(canvas.getContext('2d'), {
                 type: 'doughnut',
                 data: {
@@ -360,7 +440,8 @@
             .filter(a => a.turma === turmaNome)
             .sort((a, b) => a.nome.localeCompare(b.nome))
             .forEach(a => {
-                const isPresente = a.status === 'presente';
+                const st = (a.status || '').toLowerCase();
+                const isPresente = (st === 'presente' || st === 'sala' || st === 'sala de aula');
                 corpo.innerHTML += `
                     <div class="aluno-item">
                         <span>${a.nome}</span>
@@ -374,15 +455,14 @@
    
     window.fecharModal = () => document.getElementById('modalChamada').style.display = "none";
 
+    // Relógio digital no topo
     setInterval(() => {
-        document.getElementById('relogio').innerText = new Date().toLocaleTimeString('pt-BR');
+        const elRelogio = document.getElementById('relogio');
+        if (elRelogio) elRelogio.innerText = new Date().toLocaleTimeString('pt-BR');
     }, 1000);
 
-    setInterval(() => {
-        if (movimentacoesAtuais.length > 0) {
-            processarDados();
-        }
-    }, 30000);
+    // Inicialização
+    inicializarMonitoramento();
 </script>
 </body>
 </html>
