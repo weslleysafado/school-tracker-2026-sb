@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>School Tracker - Scanner Oficial</title>
 
+    <!-- CLIENTE SDK SUPABASE -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script&gt;
+
     <style>
         /* =========================================================
            VISUAL NORMAL
@@ -138,7 +141,6 @@
             color: #fff !important;
         }
 
-        /* Cabeçalho */
         body.modo-emergencia .header-scanner {
             width: 100%;
             max-width: 400px;
@@ -167,7 +169,6 @@
             animation: alertaEmergencia 1.5s infinite;
         }
 
-        /* Caixa dos seletores */
         body.modo-emergencia .controls {
             border: 3px solid #ef4444 !important;
             background: #1c0909 !important;
@@ -191,7 +192,6 @@
             color: #fca5a5;
         }
 
-        /* Selects travados */
         body.modo-emergencia select,
         body.modo-emergencia select:disabled {
             background: #450a0a !important;
@@ -202,13 +202,11 @@
             font-weight: bold;
         }
 
-        /* Scanner */
         body.modo-emergencia #reader {
             border: 4px solid #ef4444 !important;
             box-shadow: 0 0 20px rgba(239, 68, 68, 0.7), 0 0 45px rgba(239, 68, 68, 0.25);
         }
 
-        /* Resultado */
         body.modo-emergencia #resultado {
             background: #7f1d1d;
             border-left: 8px solid #ef4444;
@@ -285,24 +283,24 @@
     <!-- Biblioteca QR Code -->
     <script src="https://unpkg.com/html5-qrcode"></script&gt;
 
-    <!-- Firebase -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js&quot;;
-
-        /*
-         * Não precisamos mais depender do Firebase Client
-         * para descobrir o estado da emergência.
-         *
-         * O scanner consulta /api/scanner,
-         * que usa Firebase Admin no servidor.
-         */
-
-        /* =========================================================
-           AUTENTICAÇÃO BÁSICA
-           ========================================================= */
-
+    <script>
         if (sessionStorage.getItem('logado') !== 'true') {
             window.location.replace("index.html");
+        }
+
+        /* =========================================================
+           CONFIGURAÇÃO DO SUPABASE CLIENT (PUBLIC ANON KEY)
+           ========================================================= */
+        const SUPABASE_URL = 'https://jrdzgddszylausmwgrxw.supabase.co&#39;;
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyZHpnZGRzenlsYXVzbXdncnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NzAwNDgsImV4cCI6MjEwNzE0NjA0OH0.6a9pbuSuabu9yP5zdtlemeIQYTXIB4ArauayEi5N-BY';
+
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: false }
+        });
+
+        // Limpa canais órfãos ao carregar o scanner
+        if (supabaseClient) {
+            supabaseClient.removeAllChannels();
         }
 
         /* =========================================================
@@ -313,7 +311,7 @@
         window.isProcessing = false;
 
         /* =========================================================
-           ELEMENTOS
+           ELEMENTOS DO DOM
            ========================================================= */
 
         const body = document.body;
@@ -324,59 +322,80 @@
         const titulo = document.getElementById('titulo-scanner');
 
         /* =========================================================
-           FIREBASE CLIENT
+           ÁUDIO (Web Audio API)
            ========================================================= */
 
-        const firebaseConfig = {
-            databaseURL: "https://school-tracker-2026-default-rtdb.firebaseio.com/&quot;
+        let audioCtx = null;
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        const unlockAudio = () => {
+            try {
+                const ctx = getAudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                gain.gain.value = 0.001;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(0);
+                osc.stop(ctx.currentTime + 0.01);
+            } catch (e) {
+                console.warn("Erro ao desbloquear áudio:", e);
+            }
         };
 
-        initializeApp(firebaseConfig);
-
-        /* =========================================================
-           ÁUDIO
-           ========================================================= */
+        document.addEventListener('click', unlockAudio, { once: true });
+        document.addEventListener('touchstart', unlockAudio, { once: true });
 
         function playBeep(times, freq) {
             try {
-                const context = new (window.AudioContext || window.webkitAudioContext)();
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+
                 for (let i = 0; i < times; i++) {
-                    setTimeout(() => {
-                        const osc = context.createOscillator();
-                        const gain = context.createGain();
-                        osc.connect(gain);
-                        gain.connect(context.destination);
-                        osc.frequency.value = freq;
-                        osc.gain.value = 0.1;
-                        osc.start();
-                        osc.stop(context.currentTime + 0.1);
-                    }, i * 200);
+                    const startTime = now + (i * 0.2);
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, startTime);
+                   
+                    gain.gain.setValueAtTime(0.8, startTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.15);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+
+                    osc.start(startTime);
+                    osc.stop(startTime + 0.15);
                 }
             } catch (e) {
-                console.warn("Áudio não suportado");
+                console.warn("Áudio não suportado ou bloqueado pelo navegador", e);
             }
         }
 
         /* =========================================================
-           ATIVAR EMERGÊNCIA
+           ATIVAR / DESATIVAR MODO DE EMERGÊNCIA
            ========================================================= */
 
         function ativarModoEmergencia() {
-            console.log("🚨 ATIVANDO MODO DE EMERGÊNCIA NO SCANNER");
-
-            /* Evita executar novamente se já estiver ativo. */
             const primeiraAtivacao = !window.modoEmergenciaAtivo;
             window.modoEmergenciaAtivo = true;
 
-            /* Visual */
             body.classList.add("modo-emergencia");
 
-            /* Título */
             if (titulo) {
                 titulo.innerText = "🚨 MODO DE EMERGÊNCIA";
             }
 
-            /* Cria a opção especial somente se ainda não existir. */
             let optEmergencia = document.getElementById('opt-emergencia');
 
             if (!optEmergencia) {
@@ -387,62 +406,44 @@
                 selectDestino.prepend(optEmergencia);
             }
 
-            /* Define a opção. */
             selectDestino.value = 'AREA SEGURA';
-
-            /* TRAVA REALMENTE OS DOIS SELECTS. */
             selectDestino.disabled = true;
             selectResponsavel.disabled = true;
 
-            /* Reforço visual. */
             controls.style.borderColor = "#ef4444";
             controls.style.boxShadow = "0 0 15px rgba(239, 68, 68, 0.5)";
 
-            /* Mensagem. Não sobrescreve uma leitura que esteja em andamento. */
             if (!window.isProcessing) {
                 resDiv.innerHTML = "🚨 MODO EMERGÊNCIA ATIVO<br><small>🛡️ BIPAR SOMENTE PARA ÁREA SEGURA</small>";
                 resDiv.className = "error";
             }
 
-            /* Beeps somente na primeira detecção da emergência. */
             if (primeiraAtivacao) {
                 playBeep(4, 900);
             }
         }
 
-        /* =========================================================
-           DESATIVAR EMERGÊNCIA
-           ========================================================= */
-
         function desativarModoEmergencia() {
-            if (!window.modoEmergenciaAtivo) {
-                return;
-            }
+            if (!window.modoEmergenciaAtivo) return;
 
-            console.log("🟢 SCANNER VOLTANDO AO MODO NORMAL");
             window.modoEmergenciaAtivo = false;
-
             body.classList.remove("modo-emergencia");
 
             if (titulo) {
                 titulo.innerText = "Registrar Aluno";
             }
 
-            /* Remove opção especial. */
             const optEmergencia = document.getElementById('opt-emergencia');
             if (optEmergencia) {
                 optEmergencia.remove();
             }
 
-            /* LIBERA os dois selects. */
             selectDestino.disabled = false;
             selectResponsavel.disabled = false;
 
-            /* Restaura visual. */
             controls.style.borderColor = "transparent";
             controls.style.boxShadow = "none";
 
-            /* Mensagem normal. */
             if (!window.isProcessing) {
                 resDiv.innerHTML = "Aguardando leitura do QR Code...";
                 resDiv.className = "scanning";
@@ -450,12 +451,8 @@
         }
 
         /* =========================================================
-           CONSULTA O ESTADO DO SISTEMA
-           Agora o navegador pergunta ao próprio backend.
-           O backend usa Firebase Admin.
+           MONITORAMENTO DO ESTADO DO SISTEMA (SUPABASE REALTIME + FETCH)
            ========================================================= */
-
-        let primeiroEstadoRecebido = false;
 
         async function verificarEstadoEmergencia() {
             try {
@@ -464,72 +461,64 @@
                     cache: 'no-store'
                 });
 
-                if (!resposta.ok) {
-                    throw new Error(`HTTP ${resposta.status}`);
+                if (resposta.ok) {
+                    const dados = await resposta.json();
+                    if (dados.estado === "EMERGENCIA") {
+                        ativarModoEmergencia();
+                    } else {
+                        desativarModoEmergencia();
+                    }
                 }
-
-                const dados = await resposta.json();
-                console.log("📡 Estado recebido da API:", dados.estado);
-
-                if (dados.estado === "EMERGENCIA") {
-                    ativarModoEmergencia();
-                } else {
-                    desativarModoEmergencia();
-                }
-
-                primeiroEstadoRecebido = true;
-
             } catch (erro) {
-                console.warn("⚠️ Não foi possível consultar o estado:", erro);
-
-                /*
-                 * IMPORTANTE:
-                 * Se a consulta falhar, NÃO desativamos uma emergência que já estava ativa.
-                 * Isso evita que um problema temporário de internet libere os selects.
-                 */
-                if (!primeiroEstadoRecebido) {
-                    console.warn("⏳ Aguardando primeira confirmação do estado...");
-                }
+                console.warn("⚠️ Não foi possível consultar o estado via API:", erro);
             }
         }
 
-        /* Primeira consulta imediatamente. */
-        verificarEstadoEmergencia();
+        // 1. Escuta em Tempo Real pelo Supabase com auto-reconexão blindada
+        const canalScannerEstado = supabaseClient.channel('realtime-scanner-estado');
 
-        /* Depois verifica periodicamente (1 segundo). */
-        setInterval(verificarEstadoEmergencia, 1000);
+        canalScannerEstado
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'estado_sistema' }, (payload) => {
+                if (payload.new) {
+                    if (payload.new.modo === "EMERGENCIA") {
+                        ativarModoEmergencia();
+                    } else {
+                        desativarModoEmergencia();
+                    }
+                }
+            })
+            .subscribe((status, err) => {
+                console.log("📡 Status do Canal Scanner Estado:", status);
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn("⚠️ Oscilação detectada no scanner. Reconectando em 2s...");
+                    setTimeout(() => {
+                        canalScannerEstado.subscribe();
+                    }, 2000);
+                }
+            });
+
+        // 2. Consulta inicial e fallback periódico (a cada 3s)
+        verificarEstadoEmergencia();
+        setInterval(verificarEstadoEmergencia, 3000);
 
         /* =========================================================
-           LEITURA DO QR CODE
+           LEITURA DO QR CODE E ENVIO DE BIPAGEM
            ========================================================= */
 
         function onScanSuccess(decodedText) {
-            if (window.isProcessing) {
-                return;
-            }
+            if (window.isProcessing) return;
 
             window.isProcessing = true;
 
-            /*
-             * EM EMERGÊNCIA:
-             * O select NÃO importa.
-             * O destino é SEMPRE AREA SEGURA.
-             */
             const local = window.modoEmergenciaAtivo ? "AREA SEGURA" : selectDestino.value;
             const autorizacao = window.modoEmergenciaAtivo ? "PLANO DE ABANDONO" : selectResponsavel.value;
-
-            console.log("📲 QR LIDO:", decodedText);
-            console.log("📍 Destino enviado:", local);
-            console.log("🔐 Autorização enviada:", autorizacao);
 
             resDiv.innerHTML = `⏳ Sincronizando: ${decodedText}...`;
             resDiv.className = "scanning";
 
             fetch('/api/scanner', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     alunoTag: decodedText,
                     localDestino: local,
@@ -578,7 +567,7 @@
         }
 
         /* =========================================================
-           INICIALIZAÇÃO DO SCANNER
+           INICIALIZAÇÃO DO SCANNER DA CÂMERA
            ========================================================= */
 
         const html5QrcodeScanner = new Html5QrcodeScanner(
@@ -599,6 +588,5 @@
 
         html5QrcodeScanner.render(onScanSuccess);
     </script>
-
 </body>
 </html>
