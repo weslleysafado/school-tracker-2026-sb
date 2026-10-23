@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mapa da Escola - Rastreamento em Tempo Real</title>
     <link rel="icon" type="image/x-icon" href="favicon.ico">
+   
+    <!-- CLIENTE SDK SUPABASE -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script&gt;
+
     <style>
         * {
             box-sizing: border-box;
@@ -115,21 +119,25 @@
         <div id="alunos-layer"></div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js&quot;;
-        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js&quot;;
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js&quot;;
+    <script>
+        if (sessionStorage.getItem('logado') !== 'true') {
+            window.location.replace("index.html");
+        }
 
-        const firebaseConfig = {
-            apiKey: "minha API",
-            authDomain: "meu domínio",
-            databaseURL: "minha URL",
-            projectId: "school-tracker-2026"
-        };
+        /* =========================================================
+           INICIALIZAÇÃO DO SUPABASE
+           ========================================================= */
+        const SUPABASE_URL = 'https://jrdzgddszylausmwgrxw.supabase.co&#39;;
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyZHpnZGRzenlsYXVzbXdncnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NzAwNDgsImV4cCI6MjEwNzE0NjA0OH0.6a9pbuSuabu9yP5zdtlemeIQYTXIB4ArauayEi5N-BY';
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const auth = getAuth(app);
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: false }
+        });
+
+        // Limpa canais órfãos ao carregar a página do mapa
+        if (supabaseClient) {
+            supabaseClient.removeAllChannels();
+        }
 
         const locais = {
             "BWC MASCULINO": { top: 58.0, left: 61.0 },
@@ -141,72 +149,83 @@
             "SALA":          { top: 55.0, left: 45.0 }
         };
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                console.log("🔒 Autenticação confirmada no Mapa: UID =", user.uid);
+        async function carregarEMonitorarMapa() {
+            await renderizarMapa();
 
-                onValue(ref(db, 'movimentacoes'), (snapshot) => {
-                    const alunosLayer = document.getElementById('alunos-layer');
-                    if (!alunosLayer) {
-                        console.warn("⚠️ Elemento 'alunos-layer' não encontrado no DOM.");
-                        return;
+            // Canal Realtime blindado com auto-reconexão
+            const canalMapa = supabaseClient.channel('realtime-mapa');
+
+            canalMapa
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'movimentacoes' }, async () => {
+                    await renderizarMapa();
+                })
+                .subscribe((status, err) => {
+                    console.log("📡 Status do Canal Mapa:", status);
+                    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                        console.warn("⚠️ Oscilação detectada no mapa. Reconectando canal em 2s...");
+                        setTimeout(() => {
+                            canalMapa.subscribe();
+                        }, 2000);
+                    }
+                });
+        }
+
+        async function renderizarMapa() {
+            const alunosLayer = document.getElementById('alunos-layer');
+            if (!alunosLayer) return;
+
+            alunosLayer.innerHTML = '';
+
+            const { data: movimentacoes, error } = await supabaseClient
+                .from('movimentacoes')
+                .select('*')
+                .eq('status', 'em_andamento');
+
+            if (error || !movimentacoes) {
+                console.warn("⚠️ Nenhuma movimentação ativa encontrada no banco.");
+                return;
+            }
+
+            const hoje = new Date().toISOString().split('T')[0];
+            const contagemPorLocal = {};
+            const turmasProcessadasAulaVaga = new Set();
+
+            movimentacoes.forEach(mov => {
+                const dataMov = mov.data_hora_saida ? mov.data_hora_saida.split('T')[0] : hoje;
+
+                if (dataMov === hoje) {
+                    let destino = (mov.local_destino || mov.tipo || "SALA")
+                        .normalize("NFD")
+                        .replace(/[\u0300-\u036f]/g, "")
+                        .toUpperCase()
+                        .trim();
+
+                    if (destino === "PED") destino = "PEDAGOGIA";
+
+                    if (destino === "AULA VAGA") {
+                        if (turmasProcessadasAulaVaga.has(mov.turma)) return;
+                        turmasProcessadasAulaVaga.add(mov.turma);
                     }
 
-                    alunosLayer.innerHTML = '';
+                    const coordsBase = locais[destino] || locais["SALA"];
+                    if (!contagemPorLocal[destino]) contagemPorLocal[destino] = 0;
 
-                    if (!snapshot.exists()) return;
+                    const offset = contagemPorLocal[destino];
+                    contagemPorLocal[destino]++;
 
-                    const dados = snapshot.val();
-                    const hoje = new Date().toISOString().split('T')[0];
-
-                    const contagemPorLocal = {};
-                    const turmasProcessadasAulaVaga = new Set();
-
-                    Object.entries(dados).forEach(([id, mov]) => {
-                        if (mov && mov.data_hora_saida && !mov.data_hora_retorno) {
-                            const dataMov = mov.data_hora_saida.split('T')[0];
-
-                            if (dataMov === hoje) {
-                                let destino = (mov.local_destino || "SALA")
-                                                .normalize("NFD")
-                                                .replace(/[\u0300-\u036f]/g, "")
-                                                .toUpperCase()
-                                                .trim();
-
-                                if (destino === "PED") destino = "PEDAGOGIA";
-
-                                if (destino === "AULA VAGA") {
-                                    if (turmasProcessadasAulaVaga.has(mov.turma)) return;
-                                    turmasProcessadasAulaVaga.add(mov.turma);
-                                }
-
-                                const coordsBase = locais[destino] || locais["SALA"];
-                                if (!contagemPorLocal[destino]) contagemPorLocal[destino] = 0;
-
-                                const offset = contagemPorLocal[destino];
-                                contagemPorLocal[destino]++;
-
-                                if (destino === "AULA VAGA") {
-                                    criarMarcadorTurma(mov.turma, coordsBase, alunosLayer, offset);
-                                } else {
-                                    criarMarcador(mov.nome, mov.turma, coordsBase, alunosLayer, offset);
-                                }
-                            }
-                        }
-                    });
-                });
-
-            } else {
-                console.warn("⚠️ Usuário não autenticado no Mapa. Redirecionando...");
-                window.location.replace("index.html");
-            }
-        });
+                    if (destino === "AULA VAGA") {
+                        criarMarcadorTurma(mov.turma, coordsBase, alunosLayer, offset);
+                    } else {
+                        criarMarcador(mov.nome, mov.turma, coordsBase, alunosLayer, offset);
+                    }
+                }
+            });
+        }
 
         function criarMarcador(nome, turma, coords, container, offset) {
             const marker = document.createElement('div');
             marker.className = 'aluno-marker';
            
-            // O ponto do marcador descende levemente no mapa para separar as bolinhas
             marker.style.top = (coords.top + (offset * 1.5)) + "%";
             marker.style.left = (coords.left + (offset * 0.4)) + "%";
             marker.style.zIndex = 100 - offset;
@@ -214,7 +233,6 @@
             const primeiroNome = (nome || "Aluno").split(' ')[0];
             const labelTexto = turma ? `${primeiroNome} - ${turma}` : primeiroNome;
 
-            // Offset das caixas ajustado para 30px, permitindo leitura limpa e empilhamento lego
             const bottomOffset = 20 + (offset * 30);
 
             marker.innerHTML = `<div class="aluno-label" style="bottom: ${bottomOffset}px;">${labelTexto}</div>`;
@@ -236,6 +254,9 @@
             marker.innerHTML = `<div class="aluno-label" style="border-color: #f59e0b; bottom: ${bottomOffset}px;">${legendaDesejada}</div>`;
             container.appendChild(marker);
         }
+
+        // Inicializa o mapa
+        carregarEMonitorarMapa();
     </script>
 </body>
 </html>
