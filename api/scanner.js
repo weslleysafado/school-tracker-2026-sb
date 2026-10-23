@@ -1,40 +1,33 @@
-import admin from 'firebase-admin';
+import { createClient } from '@supabase/supabase-js';
 
 /* =========================================================
-   INICIALIZAÇÃO DO FIREBASE ADMIN
+   INICIALIZAÇÃO DO SUPABASE
    ========================================================= */
-
-if (!admin.apps.length) {
-    const rawKey = process.env.FIREBASE_PRIVATE_KEY;
-    const privateKey = rawKey
-        ? rawKey.replace(/^"(.*)"$/, '$1').replace(/\\n/g, '\n')
-        : undefined;
-
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: privateKey
-        }),
-        databaseURL: process.env.FIREBASE_DATABASE_URL
-    });
-}
-
-const db = admin.database();
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 /* =========================================================
    HANDLER
    ========================================================= */
-
 export default async function handler(req, res) {
 
     /* =====================================================
-       GET - Usado pelo scanner apenas para descobrir o estado atual do sistema.
+       GET - Descobre o estado atual do sistema
        ===================================================== */
     if (req.method === 'GET') {
         try {
-            const snapshot = await db.ref('configuracao/estado_sistema').once('value');
-            const estado = snapshot.val() || "NORMAL";
+            const { data, error } = await supabase
+                .from('estado_sistema')
+                .select('modo')
+                .eq('id', 1)
+                .single();
+
+            if (error && error.code !== 'PGRST116') {
+                throw error;
+            }
+
+            const estado = data?.modo || "NORMAL";
 
             return res.status(200).json({
                 success: true,
@@ -72,32 +65,33 @@ export default async function handler(req, res) {
     const tagLimpa = alunoTag.toString().trim().replace(/[\r\n]/g, "");
 
     try {
-        const configRef = db.ref('configuracao');
-        const alunosRef = db.ref('alunos');
-        const movRef = db.ref('movimentacoes');
-
         /* =================================================
            1. VERIFICAÇÃO DE EMERGÊNCIA
            ================================================= */
-        const snapshotConfig = await configRef.child('estado_sistema').once('value');
-        const emEmergencia = snapshotConfig.val() === "EMERGENCIA";
+        const { data: configData } = await supabase
+            .from('estado_sistema')
+            .select('modo')
+            .eq('id', 1)
+            .single();
 
+        const emEmergencia = configData?.modo === "EMERGENCIA";
         console.log("🚨 Emergência:", emEmergencia);
 
         /* =================================================
            2. LOCALIZA O ALUNO
            ================================================= */
-        const snapshotAlunos = await alunosRef.orderByChild('tag').equalTo(tagLimpa).once('value');
+        const { data: dadosAluno, error: erroAluno } = await supabase
+            .from('alunos')
+            .select('*')
+            .eq('uid', tagLimpa)
+            .single();
 
-        if (!snapshotAlunos.exists()) {
+        if (erroAluno || !dadosAluno) {
             return res.status(404).json({
                 success: false,
                 message: "Aluno não encontrado!"
             });
         }
-
-        const alunoKey = Object.keys(snapshotAlunos.val())[0];
-        const dadosAluno = snapshotAlunos.val()[alunoKey];
 
         /* =================================================
            3. INTELIGÊNCIA DE DESTINO
@@ -105,10 +99,6 @@ export default async function handler(req, res) {
         let localTratado;
 
         if (emEmergencia) {
-            /*
-             * REGRA ABSOLUTA:
-             * Durante o Plano de Abandono, o destino enviado pelo celular é ignorado.
-             */
             localTratado = "AREA SEGURA";
             autorizadoPor = "PLANO DE ABANDONO";
         } else {
@@ -141,19 +131,17 @@ export default async function handler(req, res) {
             novoStatus = "presente";
             localAtual = "ÁREA SEGURA";
 
-            const dadosSeguranca = {
-                status: "SEGURO",
-                hora_chegada: agora.toLocaleTimeString('pt-BR'),
-                nome: dadosAluno.nome,
-                turma: dadosAluno.turma || "N/A",
-                timestamp: agora.toISOString()
-            };
-
-            /*
-             * Registra o aluno na chamada do abandono.
-             */
-            await db.ref(`chamada_abandono/${alunoKey}`).update(dadosSeguranca);
-            await db.ref(`chamada_abandono/${tagLimpa}`).update(dadosSeguranca);
+            // Registra o aluno na chamada do abandono
+            await supabase
+                .from('chamada_abandono')
+                .upsert({
+                    aluno_tag: tagLimpa,
+                    nome: dadosAluno.nome,
+                    turma: dadosAluno.turma || "N/A",
+                    status: "SEGURO",
+                    hora_chegada: agora.toLocaleTimeString('pt-BR'),
+                    timestamp: agora.toISOString()
+                }, { onConflict: 'aluno_tag' });
 
         } else if (localDestino === "DISPENSADO") {
             novoStatus = "ausente";
@@ -163,56 +151,62 @@ export default async function handler(req, res) {
         /* =================================================
            5. ATUALIZA ALUNO
            ================================================= */
-        await alunosRef.child(alunoKey).update({
-            status: novoStatus,
-            local_atual: localAtual,
-            ultima_leitura: agora.toISOString(),
-            ultima_atualizacao: agora.toISOString()
-        });
+        await supabase
+            .from('alunos')
+            .update({
+                status: novoStatus,
+                local_atual: localAtual,
+                ultimo_registro: agora.toISOString()
+            })
+            .eq('uid', tagLimpa);
 
         /* =================================================
            6. FECHAMENTO DE MOVIMENTAÇÃO ANTERIOR
            ================================================= */
-        const snapshotMov = await movRef.orderByChild('aluno_tag').equalTo(tagLimpa).once('value');
+        const { data: movsAbertas } = await supabase
+            .from('movimentacoes')
+            .select('id')
+            .eq('uid', tagLimpa)
+            .eq('status', 'em_andamento');
 
-        if (snapshotMov.exists()) {
-            const registros = snapshotMov.val();
-            const chaveAberta = Object.keys(registros).find(
-                key => registros[key].status === 'em_andamento'
-            );
-
-            if (chaveAberta || emEmergencia) {
-                const chaveParaFechar = chaveAberta || Object.keys(registros).pop();
-
-                await movRef.child(chaveParaFechar).update({
+        if (movsAbertas && movsAbertas.length > 0) {
+            const idsParaFechar = movsAbertas.map(m => m.id);
+            await supabase
+                .from('movimentacoes')
+                .update({
                     data_hora_retorno: agora.toISOString(),
                     status: "concluido",
                     retorno_autorizado_por: emEmergencia ? "EVACUAÇÃO" : (autorizadoPor || "SISTEMA")
-                });
-            }
+                })
+                .in('id', idsParaFechar);
         }
 
         /* =================================================
            7. HISTÓRICO DE MOVIMENTAÇÃO
            ================================================= */
+        const statusMov = (localDestino === "SALA DE AULA" || localDestino === "DISPENSADO" || emEmergencia)
+            ? "concluido"
+            : "em_andamento";
+
         const registroHistorico = {
-            aluno_tag: tagLimpa,
+            uid: tagLimpa,
             nome: dadosAluno.nome,
+            turma: dadosAluno.turma || "N/A",
+            tipo: localDestino,
             local_destino: localDestino,
             data_hora_saida: agora.toISOString(),
             autorizado_por: autorizadoPor || "SISTEMA",
-            turma: dadosAluno.turma || "N/A",
             tempo_limite: tempoLimiteDefinido,
-            status: (localDestino === "SALA DE AULA" || localDestino === "DISPENSADO" || emEmergencia)
-                ? "concluido"
-                : "em_andamento"
+            status: statusMov
         };
 
-        if (localDestino === "SALA DE AULA" || localDestino === "DISPENSADO" || emEmergencia) {
+        if (statusMov === "concluido") {
             registroHistorico.data_hora_retorno = agora.toISOString();
         }
 
-        await movRef.push(registroHistorico);
+        await supabase
+            .from('movimentacoes')
+            .insert([registroHistorico]);
 
         /* =================================================
            8. RESPOSTA
